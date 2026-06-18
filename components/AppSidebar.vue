@@ -16,21 +16,41 @@ const group1: NavItem[] = [
   { icon: 'employee', label: 'Employees', path: '/employees' },
 ]
 
+// Insurance has no level-2 submenu until at least one plan exists — you can't
+// configure enrollments without a plan, so first-run shows a flat menu item.
+// `coachmarkOpen` pulses the Enrollments item on the very first import.
+const route = useRoute()
+const scenario = useState<'first-run' | 'coachmark' | 'has-plans'>('insurance-scenario', () => 'first-run')
+const coachmarkOpen = useState('insurance-coachmark-open', () => false)
+// Enrollment pages only exist once plans do — always show the submenu there,
+// even if the demo scenario resets to first-run on a direct load/reload.
+const hasInsurancePlans = computed(() =>
+  scenario.value !== 'first-run' || route.path.startsWith('/insurance/enrollments'),
+)
+// Being on an enrollment route proves plans exist, so promote the scenario out
+// of first-run — that way clicking "Insurance plans" lands on the plans table,
+// never the first-run page.
+watchEffect(() => {
+  if (scenario.value === 'first-run' && route.path.startsWith('/insurance/enrollments')) {
+    scenario.value = 'has-plans'
+  }
+})
+
 // Group 2 — products (divider before this group)
-const group2: NavItem[] = [
+const group2 = computed<NavItem[]>(() => [
   { icon: 'wallet', label: 'Accessible salary', path: '/accessible-salary' },
   { icon: 'plans', label: 'Flex benefit', path: '/flex-benefit' },
   { icon: 'loan', label: 'Flex installment', path: '/flex-installment' },
-  {
-    icon: 'protection', label: 'Insurance',
-    children: [
-      // Design lists "Enrollments" first; reordered so the Insurance nav lands
-      // on the built Block-1 screen. Restore order when Block 2 ships.
-      { label: 'Insurance plans', path: '/insurance/plans' },
-      { label: 'Enrollments', path: '/insurance/enrollments' },
-    ],
-  },
-]
+  hasInsurancePlans.value
+    ? {
+        icon: 'protection', label: 'Insurance',
+        children: [
+          { label: 'Enrollments', path: '/insurance/enrollments' },
+          { label: 'Insurance plans', path: '/insurance/plans' },
+        ],
+      }
+    : { icon: 'protection', label: 'Insurance', path: '/insurance/plans' },
+])
 
 // Group 3 — settings (divider between Insurance and Settings)
 const group3: NavItem[] = [
@@ -46,17 +66,18 @@ const group3: NavItem[] = [
   },
 ]
 
-const allGroups = [group1, group2, group3]
-const allItems = [...group1, ...group2, ...group3]
+const allGroups = computed(() => [group1, group2.value, group3])
+const allItems = computed(() => [group1, group2.value, group3].flat())
 
-const route = useRoute()
 const hasActiveChild = (item: NavItem) =>
   !!item.children?.some(c => route.path === c.path || route.path.startsWith(c.path + '/'))
 const isItemActive = (item: NavItem) =>
-  item.path ? route.path === item.path : hasActiveChild(item)
+  item.path
+    ? (route.path === item.path || route.path.startsWith(item.path + '/'))
+    : hasActiveChild(item)
 const itemTarget = (item: NavItem) => item.path ?? item.children?.[0]?.path ?? '/'
 
-const activeParent = computed<NavItem | undefined>(() => allItems.find(hasActiveChild))
+const activeParent = computed<NavItem | undefined>(() => allItems.value.find(hasActiveChild))
 const isSubmenuMode = computed(() => !!activeParent.value)
 
 const isMainNavCollapsed = useState('sidebar-main-collapsed', () => false)
@@ -260,7 +281,12 @@ const itemClassRail = (item: NavItem) => {
               :class="(route.path === child.path || route.path.startsWith(child.path + '/')) ? childActive : childDefault"
               :aria-current="(route.path === child.path || route.path.startsWith(child.path + '/')) ? 'page' : undefined"
             >
-              {{ child.label }}
+              <span :class="css({ flex: '1 1 auto' })">{{ child.label }}</span>
+              <span
+                v-if="coachmarkOpen && child.path === '/insurance/enrollments'"
+                class="flex-pulse-dot"
+                aria-hidden="true"
+              />
             </NuxtLink>
           </MpFlex>
           <MpFlex align="center" justify="flex-end" height="68px" paddingInline="3" flexShrink="0">

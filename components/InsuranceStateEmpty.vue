@@ -5,16 +5,17 @@
   ASSET NOTE: Figma uses a 3D illustration; placeholder = tinted icon tile.
 -->
 <script setup lang="ts">
-import { MpFlex, MpText, MpButton, css } from '@mekari/pixel3'
+import { Pixel, MpFlex, MpText, MpButton, css } from '@mekari/pixel3'
 
 withDefaults(
   defineProps<{
     title: string
     description?: string
     icon?: string
+    image?: string
     actionLabel?: string
   }>(),
-  { description: '', icon: 'protection', actionLabel: '' },
+  { description: '', icon: 'protection', image: '', actionLabel: '' },
 )
 
 const emit = defineEmits<{ action: [] }>()
@@ -24,11 +25,13 @@ const illustration = css({
   width: '96px', height: '96px', borderRadius: 'full',
   background: 'background.brand.selected', color: 'icon.brand',
 })
+const illustrationImg = css({ width: '180px', height: 'auto', objectFit: 'contain' })
 </script>
 
 <template>
   <MpFlex direction="column" align="center" justify="center" gap="2" paddingBlock="20">
-    <MpFlex :class="illustration" marginBottom="2" aria-hidden="true">
+    <Pixel.img v-if="image" :class="illustrationImg" :src="image" alt="" aria-hidden="true" marginBottom="2" />
+    <MpFlex v-else :class="illustration" marginBottom="2" aria-hidden="true">
       <PxIcon :name="icon" :size="32" variant="duotone" color="icon.brand" />
     </MpFlex>
     <MpText size="label" weight="semiBold" color="text.default" align="center">{{ title }}</MpText>

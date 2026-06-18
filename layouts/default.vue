@@ -14,7 +14,7 @@
 -->
 <script setup lang="ts">
 import {
-  MpFlex, MpText, MpButton,
+  MpFlex, MpText, MpButton, MpBadge,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
   MpToastManager, css,
 } from '@mekari/pixel3'
@@ -29,20 +29,42 @@ interface PageHeaderRight {
   items: PageHeaderRightItem[]
   onSelect: (label: string) => void
 }
+interface TitleBadge { label: string; type?: string }
+interface PageHeader {
+  title?: string
+  badge?: TitleBadge | null
+  headerRight?: PageHeaderRight | null
+  breadcrumb?: Crumb[]
+}
 
 const route = useRoute()
-const pageTitle = computed(() => (route.meta.title as string) || 'Page Title')
-const breadcrumb = computed(() => (route.meta.breadcrumb as Crumb[] | undefined) ?? [])
 const headerAction = computed(() => route.meta.headerAction as HeaderAction | undefined)
 
-// Pages can inject this to set a custom popover button in the title bar
-const pageHeaderRight = ref<PageHeaderRight | null>(null)
-provide('setPageHeaderRight', (config: PageHeaderRight | null) => {
-  pageHeaderRight.value = config
+// Dynamic pages ([id].vue) register a title/badge/header-button stamped with the
+// route they belong to. The layout only shows it while that route is active, so
+// stale state from the previous page can never leak and there's no clear-vs-set
+// race on client navigation (which the route.meta / onMounted approaches both lost,
+// leaving "Page Title" until a manual refresh). Static pages keep using
+// definePageMeta (route.meta) as the fallback.
+const injected = ref<PageHeader & { path: string }>({ path: '' })
+provide('setPageHeader', (config: PageHeader) => {
+  injected.value = { ...config, path: route.fullPath }
 })
+const isInjectedCurrent = computed(() => injected.value.path === route.fullPath)
 
-// Clear custom header right when route changes
-watch(() => route.fullPath, () => { pageHeaderRight.value = null })
+const pageTitle = computed(() =>
+  (isInjectedCurrent.value && injected.value.title)
+  || (route.meta.title as string)
+  || 'Page Title')
+const titleBadge = computed<TitleBadge | undefined>(() =>
+  (isInjectedCurrent.value ? injected.value.badge : undefined)
+  ?? (route.meta.titleBadge as TitleBadge | undefined))
+const pageHeaderRight = computed<PageHeaderRight | null>(() =>
+  isInjectedCurrent.value ? (injected.value.headerRight ?? null) : null)
+const breadcrumb = computed<Crumb[]>(() =>
+  (isInjectedCurrent.value && injected.value.breadcrumb)
+  || (route.meta.breadcrumb as Crumb[] | undefined)
+  || [])
 
 const crumbLink = css({
   fontFamily: 'body', fontSize: 'sm', lineHeight: 'md',
@@ -63,18 +85,17 @@ const crumbLink = css({
         <MpFlex align="center" justify="space-between" gap="4" height="72px" paddingInline="6">
           <MpFlex direction="column" gap="0.5" minWidth="0">
             <MpFlex v-if="breadcrumb.length" align="center" gap="1">
-              <NuxtLink
-                v-for="crumb in breadcrumb"
-                :key="crumb.to"
-                :to="crumb.to"
-                :class="crumbLink"
-              >
-                {{ crumb.label }}
-              </NuxtLink>
+              <template v-for="(crumb, i) in breadcrumb" :key="crumb.to">
+                <MpText v-if="i > 0" size="label" color="text.secondary">/</MpText>
+                <NuxtLink :to="crumb.to" :class="crumbLink">{{ crumb.label }}</NuxtLink>
+              </template>
             </MpFlex>
-            <MpText as="h1" size="h1" weight="semiBold" color="text.default">
-              {{ pageTitle }}
-            </MpText>
+            <MpFlex align="center" gap="2" minWidth="0">
+              <MpText as="h1" size="h1" weight="semiBold" color="text.default">
+                {{ pageTitle }}
+              </MpText>
+              <MpBadge v-if="titleBadge" for="additionalInformation" size="md" :type="titleBadge.type ?? 'announcement'">{{ titleBadge.label }}</MpBadge>
+            </MpFlex>
           </MpFlex>
 
           <!-- Custom popover button (set by page via inject) -->

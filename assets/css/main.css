@@ -33,3 +33,30 @@ html, body, #__nuxt {
 .mp-icon-box[data-size='24'] { width: 24px; height: 24px; }
 .mp-icon-box[data-size='28'] { width: 28px; height: 28px; }
 .mp-icon-box[data-size='32'] { width: 32px; height: 32px; }
+
+/*
+  Pulse indicator (coachmark) — a solid brand dot with an expanding, fading
+  ring. Panda's preset ships no `ping`/`pulse` keyframe usable from css(), so
+  the animation primitive lives here as global CSS.
+*/
+@keyframes flex-ping {
+  75%, 100% { transform: scale(2.4); opacity: 0; }
+}
+.flex-pulse-dot {
+  position: relative;
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+.flex-pulse-dot::before,
+.flex-pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--mp-colors-icon-brand, #4b61dd);
+}
+.flex-pulse-dot::before {
+  animation: flex-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
