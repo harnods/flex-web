@@ -16,7 +16,7 @@ definePageMeta({
 })
 
 const route = useRoute()
-const setPageHeaderRight = inject<(config: any) => void>('setPageHeaderRight')
+const setPageHeader = inject<(config: any) => void>('setPageHeader')
 
 interface Approver {
   id: string
@@ -86,19 +86,21 @@ function deleteRule() {
 }
 
 watchEffect(() => {
-  if (rule.value && setPageHeaderRight) {
-    route.meta.title = rule.value.name
-    setPageHeaderRight({
-      label: 'Actions',
-      variant: 'primary',
-      rightIcon: 'caret-down',
-      items: [
-        { label: 'Edit' },
-        { label: 'Delete' },
-      ],
-      onSelect: (label: string) => {
-        if (label === 'Edit') navigateTo(`/settings/approvals/${rule.value!.id}/edit`)
-        if (label === 'Delete') deleteRule()
+  if (rule.value && setPageHeader) {
+    setPageHeader({
+      title: rule.value.name,
+      headerRight: {
+        label: 'Actions',
+        variant: 'primary',
+        rightIcon: 'caret-down',
+        items: [
+          { label: 'Edit' },
+          { label: 'Delete' },
+        ],
+        onSelect: (label: string) => {
+          if (label === 'Edit') navigateTo(`/settings/approvals/${rule.value!.id}/edit`)
+          if (label === 'Delete') deleteRule()
+        },
       },
     })
   }

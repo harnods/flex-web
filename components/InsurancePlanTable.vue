@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import {
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
-  MpText, MpButton, MpBadge, MpFlex, css,
+  MpText, MpFlex, css,
 } from '@mekari/pixel3'
 
 export interface InsurancePlan { id: string; name: string }
@@ -19,30 +19,34 @@ export interface InsurancePlanGroup {
   provider: string
   broker: string
   status: 'Active' | 'Inactive' | 'Expired'
+  updatedAt: string
+  updatedBy: string
   plans: InsurancePlan[]
 }
 
 const props = defineProps<{ groups: InsurancePlanGroup[] }>()
-const emit = defineEmits<{ viewDetails: [planId: string] }>()
 
 const expanded = ref<Record<string, boolean>>({})
 const isOpen = (id: string, first: boolean) => expanded.value[id] ?? first
 const toggle = (id: string, first: boolean) => { expanded.value[id] = !isOpen(id, first) }
 
-const statusType = (s: InsurancePlanGroup['status']) => (s === 'Active' ? 'green' : 'gray')
-
-// top-align the shared (rowspan) meta cells against the stacked plan rows
-const metaCell = css({ verticalAlign: 'top' })
+// Match the approvals table: 8px (token 2) vertical padding, cells top-aligned
+// so the shared (rowspan) meta cells line up against the stacked plan rows.
+const cellPad = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'top' })
+const metaCell = cellPad
 const periodToggle = css({
   display: 'inline-flex', alignItems: 'center', gap: '2',
   border: 'none', background: 'transparent', cursor: 'pointer',
   padding: '0', color: 'text.default',
 })
 const wPeriod = css({ width: '208px' })
-const wStatus = css({ width: '112px' })
-// Cells sharing a row with a button drop to 8px vertical padding so an `md`
-// button (~40px) keeps the row at the 56px minimum instead of ballooning.
-const btnCell = css({ paddingTop: '2 !important', paddingBottom: '2 !important' })
+// Plan-name rows below the first are `:last-child` (the Last-updated rowspan
+// covers their right slot), so the bordered table strips their right border —
+// force it back on so the column divider runs the full group height.
+const planCell = css({
+  paddingTop: '2', paddingBottom: '2', verticalAlign: 'top',
+  borderRightWidth: '1px !important', borderRightColor: 'border.default !important',
+})
 </script>
 
 <template>
@@ -54,9 +58,8 @@ const btnCell = css({ paddingTop: '2 !important', paddingBottom: '2 !important' 
           <MpTableCell as="th">Benefit Type</MpTableCell>
           <MpTableCell as="th">Insurance provider</MpTableCell>
           <MpTableCell as="th">Insurance broker</MpTableCell>
-          <MpTableCell as="th" :class="wStatus">Status</MpTableCell>
           <MpTableCell as="th">Plan name</MpTableCell>
-          <MpTableCell as="th" />
+          <MpTableCell as="th">Last updated</MpTableCell>
         </MpTableRow>
       </MpTableHead>
 
@@ -64,7 +67,7 @@ const btnCell = css({ paddingTop: '2 !important', paddingBottom: '2 !important' 
         <template v-for="(group, gi) in props.groups" :key="group.id">
           <!-- Collapsed: single summary row -->
           <MpTableRow v-if="!isOpen(group.id, gi === 0)">
-            <MpTableCell as="td" :colspan="7">
+            <MpTableCell as="td" :colspan="6" :class="cellPad">
               <button type="button" :class="periodToggle" @click="toggle(group.id, gi === 0)">
                 <PxIcon name="caret-right" :size="16" color="icon.secondary" />
                 <MpText size="body" color="text.default">{{ group.coveragePeriod }}</MpText>
@@ -104,20 +107,16 @@ const btnCell = css({ paddingTop: '2 !important', paddingBottom: '2 !important' 
                     {{ group.broker || '—' }}
                   </MpText>
                 </MpTableCell>
-
-                <MpTableCell as="td" :rowspan="group.plans.length" :class="[metaCell, wStatus]">
-                  <MpBadge for="tableStatus" :type="statusType(group.status)">{{ group.status }}</MpBadge>
-                </MpTableCell>
               </template>
 
-              <MpTableCell as="td" :class="btnCell">
+              <MpTableCell as="td" :class="planCell">
                 <MpText size="body" color="text.default">{{ plan.name }}</MpText>
               </MpTableCell>
-              <MpTableCell as="td" :class="btnCell">
-                <MpFlex justify="flex-end">
-                  <MpButton variant="secondary" size="md" @click="emit('viewDetails', plan.id)">
-                    View details
-                  </MpButton>
+
+              <MpTableCell v-if="pi === 0" as="td" :rowspan="group.plans.length" :class="metaCell">
+                <MpFlex direction="column" gap="0">
+                  <MpText size="body" color="text.default">{{ group.updatedAt }}</MpText>
+                  <MpText size="body-small" color="text.secondary">by {{ group.updatedBy }}</MpText>
                 </MpFlex>
               </MpTableCell>
             </MpTableRow>
