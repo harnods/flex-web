@@ -213,7 +213,7 @@ const darkBtn = css({
 })
 const darkBtnStyle = { background: 'var(--mp-colors-background-inverse)', color: 'var(--mp-colors-text-inverse)' }
 const cellPad = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'middle' })
-const dateCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'middle', width: '180px' })
+const dateCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'middle', width: '240px' })
 const removeBtn = css({
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   border: 'none', background: 'transparent', cursor: 'pointer', padding: '0',
@@ -247,7 +247,7 @@ const footer = css({
   paddingInline: '6', paddingTop: '4', paddingBottom: '6',
   background: 'background.neutral',
 })
-const dateField = css({ width: '156px' })
+const dateField = css({ width: '100%' })
 </script>
 
 <template>

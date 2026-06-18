@@ -11,12 +11,12 @@ import {
   MpInput, MpInputGroup, MpInputLeftAddon,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
-  MpCheckbox,
-  MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalCloseButton, MpModalOverlay,
+  MpCheckbox, MpRadio, MpDatePicker,
+  MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalFooter, MpModalCloseButton, MpModalOverlay,
   MpDrawer, MpDrawerContent, MpDrawerHeader, MpDrawerBody, MpDrawerFooter,
   MpDrawerCloseButton, MpDrawerOverlay,
   MpButtonGroup,
-  css,
+  toast, css,
 } from '@mekari/pixel3'
 
 definePageMeta({ navKey: 'insurance' })
@@ -220,7 +220,54 @@ function viewDependents(row: EmployeeRow) {
 function closeDepModal() { isDepModalOpen.value = false }
 
 function onAction(_action: string, _row: EmployeeRow) { /* TODO: view / edit / remove employee */ }
-function exportList() { /* TODO: export enrolled employees */ }
+
+// ── Export data modal ────────────────────────────────────────────────────────────
+// Always-included identity columns (locked on). The rest default on but are toggleable.
+const EXPORT_LOCKED = [
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'employeeId', label: 'Employee ID' },
+]
+const EXPORT_OPTIONAL = [
+  { key: 'employmentStatus', label: 'Employment status' },
+  { key: 'branch', label: 'Branch' },
+  { key: 'organization', label: 'Organization' },
+  { key: 'jobPosition', label: 'Job position' },
+  { key: 'jobLevel', label: 'Job level' },
+  { key: 'gender', label: 'Gender' },
+  { key: 'dependents', label: 'Dependents' },
+  { key: 'enrolledDate', label: 'Enrolled date' },
+  { key: 'enrolledBy', label: 'Enrolled by' },
+]
+const isExportModalOpen = ref(false)
+const exportDateMode = ref<'all' | 'specific'>('all')
+const exportDate = ref<Date | null>(null)
+const exportCols = ref<string[]>(EXPORT_OPTIONAL.map((c) => c.key))
+// Export is valid unless "specific date" is chosen without a date.
+const exportValid = computed(() => exportDateMode.value === 'all' || !!exportDate.value)
+
+function toggleExportCol(key: string) {
+  const next = new Set(exportCols.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  exportCols.value = [...next]
+}
+function openExportModal() {
+  exportDateMode.value = 'all'
+  exportDate.value = null
+  exportCols.value = EXPORT_OPTIONAL.map((c) => c.key)
+  isExportModalOpen.value = true
+}
+function closeExportModal() { isExportModalOpen.value = false }
+function confirmExport() {
+  if (!exportValid.value) return
+  isExportModalOpen.value = false
+  // Async export — the file is generated in the background and emailed when ready.
+  toast.notify({
+    position: 'top-center',
+    variant: 'success',
+    title: "Export in progress. We'll email you the download link once it's ready.",
+  })
+}
 
 // ── Scroll-aware sticky border ──────────────────────────────────────────────────
 // rAF poll instead of scroll event — Pixel's internal scroll handler swallows
@@ -470,7 +517,7 @@ const empId = css({ display: 'block' })
           </MpPopover>
         </MpTooltip>
         <MpTooltip label="Export" position="top">
-          <button type="button" :class="iconBtn" aria-label="Export" @click="exportList">
+          <button type="button" :class="iconBtn" aria-label="Export" @click="openExportModal">
             <PxIcon name="upload" :size="20" color="icon.secondary" />
           </button>
         </MpTooltip>
@@ -611,6 +658,64 @@ const empId = css({ display: 'block' })
           </MpFlex>
         </MpFlex>
       </MpModalBody>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
+
+  <!-- ── Export data modal ───────────────────────────────────────────────── -->
+  <MpModal
+    id="modal-export"
+    :is-open="isExportModalOpen"
+    size="md"
+    is-close-on-esc
+    is-close-on-overlay-click
+    @close="closeExportModal"
+  >
+    <MpModalContent>
+      <MpModalHeader>
+        Export data
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpFlex direction="column" gap="4">
+          <MpText size="body" color="text.default">A download link will be sent to your email.</MpText>
+
+          <!-- Effective date: all dates or a specific one -->
+          <MpFlex direction="column" gap="2">
+            <MpText size="label" weight="semiBold" color="text.default">Effective date <span :class="css({ color: 'text.danger' })">*</span></MpText>
+            <MpRadio id="export-date-all" v-model="exportDateMode" value="all" name="export-date">All dates</MpRadio>
+            <MpRadio id="export-date-specific" v-model="exportDateMode" value="specific" name="export-date">Specific effective date</MpRadio>
+            <MpFlex v-if="exportDateMode === 'specific'" :class="css({ width: '100%' })" paddingLeft="6">
+              <MpDatePicker id="export-date" v-model="exportDate" format="D MMM YYYY" placeholder="Select date" use-portal />
+            </MpFlex>
+          </MpFlex>
+
+          <!-- Columns to include — 20px below the effective-date radios (16px gap + 4px) -->
+          <MpFlex direction="column" gap="2" marginTop="1">
+            <MpText size="label" weight="semiBold" color="text.default">Export will include</MpText>
+            <MpCheckbox
+              v-for="col in EXPORT_LOCKED"
+              :key="col.key"
+              :id="`export-col-${col.key}`"
+              :is-checked="true"
+              is-disabled
+            >{{ col.label }}</MpCheckbox>
+            <MpCheckbox
+              v-for="col in EXPORT_OPTIONAL"
+              :key="col.key"
+              :id="`export-col-${col.key}`"
+              :is-checked="exportCols.includes(col.key)"
+              @change="toggleExportCol(col.key)"
+            >{{ col.label }}</MpCheckbox>
+          </MpFlex>
+        </MpFlex>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="closeExportModal">Cancel</MpButton>
+          <MpButton variant="primary" size="md" :is-disabled="!exportValid" @click="confirmExport">Export</MpButton>
+        </MpFlex>
+      </MpModalFooter>
     </MpModalContent>
     <MpModalOverlay />
   </MpModal>
