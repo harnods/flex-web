@@ -273,12 +273,20 @@ function confirmExport() {
 // rAF poll instead of scroll event — Pixel's internal scroll handler swallows
 // the event, making event-based detection unreliable across environments.
 const isScrolled = ref(false)
+// `isAtEnd` = scrolled all the way to the right (or no horizontal overflow). The
+// right-sticky Actions column only needs its left border while content is still
+// scrolled underneath it — once at the end it sits at its natural position.
+const isAtEnd = ref(true)
 const tableWrapperRef = ref<HTMLElement | null>(null)
 let _scrollEl: HTMLElement | null = null
 let _rafId: number | null = null
 function _pollScroll() {
-  const scrolled = (_scrollEl?.scrollLeft ?? 0) > 0
+  const el = _scrollEl
+  const scrolled = (el?.scrollLeft ?? 0) > 0
   if (scrolled !== isScrolled.value) isScrolled.value = scrolled
+  // 1px tolerance for sub-pixel rounding.
+  const atEnd = !el || el.scrollLeft + el.clientWidth >= el.scrollWidth - 1
+  if (atEnd !== isAtEnd.value) isAtEnd.value = atEnd
   _rafId = requestAnimationFrame(_pollScroll)
 }
 onMounted(async () => {
@@ -415,8 +423,11 @@ const nameCell = css({
   paddingTop: '2', paddingBottom: '2', verticalAlign: 'middle', whiteSpace: 'nowrap',
   background: 'background.neutral',
 })
-// Applied to the sticky name column only when the table is scrolled right.
-const nameBorder = css({ borderRightWidth: '1.5px', borderRightStyle: 'solid', borderRightColor: 'border.default' })
+// Sticky name column divider — shown only when content is scrolled underneath it.
+// Uses an inset box-shadow rather than a border: the table is border-collapse,
+// and collapsed borders don't follow a position:sticky cell, so a real border
+// never paints. An inset shadow is painted by the cell itself → reliably visible.
+const nameBorder = css({ boxShadow: 'inset -1px 0 0 0 #D0D6DD' })
 // Actions column is sticky on the right — mirrors the name column on the left.
 const actionHead = css({ position: 'sticky', right: '0', zIndex: 3, background: 'background.surface', textAlign: 'right' })
 const actionCell = css({
@@ -424,8 +435,10 @@ const actionCell = css({
   paddingTop: '2', paddingBottom: '2', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap',
   background: 'background.neutral',
 })
-// Applied to the sticky actions column only when the table is scrolled right.
-const actionBorder = css({ borderLeftWidth: '1.5px', borderLeftStyle: 'solid', borderLeftColor: 'border.default' })
+// Sticky actions column divider — shown only while content is still scrolled
+// underneath it (hidden once scrolled to the end / no overflow). Inset box-shadow,
+// not a border — see nameBorder note (border-collapse + sticky drops real borders).
+const actionBorder = css({ boxShadow: 'inset 1px 0 0 0 #D0D6DD' })
 const iconBtn = css({
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   width: '40px', height: '40px', borderRadius: 'md', cursor: 'pointer',
@@ -436,7 +449,7 @@ const empId = css({ display: 'block' })
 </script>
 
 <template>
-  <MpFlex direction="column" gap="4">
+  <MpFlex direction="column" gap="6">
     <!-- ── Plan overview ───────────────────────────────────────────────────── -->
     <div :class="overviewCard">
       <div :class="overviewHeader">
@@ -549,7 +562,7 @@ const empId = css({ display: 'block' })
               <MpTableCell v-if="visibleCols.has('effectiveDate')" as="th" :class="colMin">Effective date</MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledDate')" as="th" :class="colMin">Enrolled date</MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledBy')" as="th" :class="colMin">Enrolled by</MpTableCell>
-              <MpTableCell as="th" :class="[actionHead, actionBorder]" />
+              <MpTableCell as="th" :class="[actionHead, !isAtEnd && actionBorder]" />
             </MpTableRow>
           </MpTableHead>
           <MpTableBody>
@@ -577,7 +590,7 @@ const empId = css({ display: 'block' })
               <MpTableCell v-if="visibleCols.has('effectiveDate')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.effectiveDate }}</MpText></MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledDate')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.enrolledDate }}</MpText></MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledBy')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.enrolledBy }}</MpText></MpTableCell>
-              <MpTableCell as="td" :class="[actionCell, actionBorder]">
+              <MpTableCell as="td" :class="[actionCell, !isAtEnd && actionBorder]">
                 <MpPopover use-portal placement="bottom-end" is-close-on-select>
                   <MpPopoverTrigger>
                     <MpButton variant="secondary" size="md" right-icon="caret-down">Actions</MpButton>

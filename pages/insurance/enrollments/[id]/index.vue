@@ -128,7 +128,7 @@ const exportBtn = css({
 </script>
 
 <template>
-  <MpFlex direction="column" gap="4">
+  <MpFlex direction="column" gap="6">
     <!-- ── Enrollment overview ─────────────────────────────────────────────── -->
     <div :class="overviewCard">
       <div :class="overviewHeader">
@@ -196,7 +196,10 @@ const exportBtn = css({
         <MpTableBody>
           <MpTableRow v-for="(plan, i) in filteredPlans" :key="plan.id">
             <MpTableCell as="td" :class="cellPad"><MpText size="body" color="text.default">{{ i + 1 }}.</MpText></MpTableCell>
-            <MpTableCell as="td" :class="cellPad"><MpText size="body" color="text.default">{{ plan.name }}</MpText></MpTableCell>
+            <MpTableCell as="td" :class="cellPad">
+              <MpTextlink v-if="!isDraft" @click="viewPlanDetails(plan.id)">{{ plan.name }}</MpTextlink>
+              <MpText v-else size="body" color="text.default">{{ plan.name }}</MpText>
+            </MpTableCell>
             <MpTableCell as="td" :class="cellPad"><MpText size="body" :color="plan.enrolled === null ? 'text.secondary' : 'text.default'">{{ plan.enrolled === null ? DASH : `${plan.enrolled} employees` }}</MpText></MpTableCell>
             <MpTableCell v-if="!isDraft" as="td" :class="actionCell">
               <MpButton variant="secondary" size="md" @click="viewPlanDetails(plan.id)">View details</MpButton>

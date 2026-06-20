@@ -7,8 +7,9 @@
 -->
 <script setup lang="ts">
 import {
+  Pixel,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
-  MpText, MpFlex, css,
+  MpText, MpFlex, MpTooltip, css,
 } from '@mekari/pixel3'
 
 export interface InsurancePlan { id: string; name: string }
@@ -22,9 +23,13 @@ export interface InsurancePlanGroup {
   updatedAt: string
   updatedBy: string
   plans: InsurancePlan[]
+  // `inUse` = the coverage period is associated to at least one enrollment →
+  // the whole insurance plan can't be deleted.
+  inUse?: boolean
 }
 
 const props = defineProps<{ groups: InsurancePlanGroup[] }>()
+const emit = defineEmits<{ delete: [group: InsurancePlanGroup] }>()
 
 const expanded = ref<Record<string, boolean>>({})
 const isOpen = (id: string, first: boolean) => expanded.value[id] ?? first
@@ -47,6 +52,16 @@ const planCell = css({
   paddingTop: '2', paddingBottom: '2', verticalAlign: 'top',
   borderRightWidth: '1px !important', borderRightColor: 'border.default !important',
 })
+// Benefit types as a real disc list — normal bullet size, black marker (text.default).
+const benefitList = css({ listStyleType: 'disc', paddingLeft: '4', color: 'text.default' })
+const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'top', width: '56px', textAlign: 'center' })
+const iconBtn = css({
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  width: '32px', height: '32px', borderRadius: 'md', cursor: 'pointer',
+  border: 'none', background: 'transparent', color: 'icon.secondary',
+  _hover: { background: 'background.neutral.hovered', color: 'icon.danger' },
+  _disabled: { cursor: 'not-allowed', color: 'icon.disabled', background: 'transparent' },
+})
 </script>
 
 <template>
@@ -60,6 +75,7 @@ const planCell = css({
           <MpTableCell as="th">Insurance broker</MpTableCell>
           <MpTableCell as="th">Plan name</MpTableCell>
           <MpTableCell as="th">Last updated</MpTableCell>
+          <MpTableCell as="th" :class="actionCell" />
         </MpTableRow>
       </MpTableHead>
 
@@ -72,6 +88,19 @@ const planCell = css({
                 <PxIcon name="caret-right" :size="16" color="icon.secondary" />
                 <MpText size="body" color="text.default">{{ group.coveragePeriod }}</MpText>
               </button>
+            </MpTableCell>
+            <MpTableCell as="td" :class="actionCell">
+              <MpTooltip :label="group.inUse ? 'Used in an enrollment — can\'t be deleted' : 'Delete insurance plan'" position="top">
+                <button
+                  type="button"
+                  :class="iconBtn"
+                  :disabled="group.inUse"
+                  :aria-label="`Delete ${group.coveragePeriod}`"
+                  @click="emit('delete', group)"
+                >
+                  <PxIcon name="delete" :size="20" :color="group.inUse ? 'icon.disabled' : 'icon.secondary'" />
+                </button>
+              </MpTooltip>
             </MpTableCell>
           </MpTableRow>
 
@@ -87,12 +116,11 @@ const planCell = css({
                 </MpTableCell>
 
                 <MpTableCell as="td" :rowspan="group.plans.length" :class="metaCell">
-                  <MpFlex v-if="group.benefitTypes.length" direction="column" gap="1">
-                    <MpFlex v-for="b in group.benefitTypes" :key="b" align="center" gap="2">
-                      <PxIcon name="indicator-circle" :size="16" color="icon.secondary" />
+                  <Pixel.ul v-if="group.benefitTypes.length" :class="benefitList">
+                    <Pixel.li v-for="b in group.benefitTypes" :key="b">
                       <MpText size="body" color="text.default">{{ b }}</MpText>
-                    </MpFlex>
-                  </MpFlex>
+                    </Pixel.li>
+                  </Pixel.ul>
                   <MpText v-else size="body" color="text.secondary">—</MpText>
                 </MpTableCell>
 
@@ -118,6 +146,21 @@ const planCell = css({
                   <MpText size="body" color="text.default">{{ group.updatedAt }}</MpText>
                   <MpText size="body-small" color="text.secondary">by {{ group.updatedBy }}</MpText>
                 </MpFlex>
+              </MpTableCell>
+
+              <!-- Delete the whole coverage period — only if not associated with any enrollment -->
+              <MpTableCell v-if="pi === 0" as="td" :rowspan="group.plans.length" :class="actionCell">
+                <MpTooltip :label="group.inUse ? 'Used in an enrollment — can\'t be deleted' : 'Delete insurance plan'" position="top">
+                  <button
+                    type="button"
+                    :class="iconBtn"
+                    :disabled="group.inUse"
+                    :aria-label="`Delete ${group.coveragePeriod}`"
+                    @click="emit('delete', group)"
+                  >
+                    <PxIcon name="delete" :size="20" :color="group.inUse ? 'icon.disabled' : 'icon.secondary'" />
+                  </button>
+                </MpTooltip>
               </MpTableCell>
             </MpTableRow>
           </template>

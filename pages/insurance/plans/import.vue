@@ -54,7 +54,7 @@ const COPY = {
   dropDescription: 'Supported formats: CSV, XLS, XLSX. Maximum file size 10 MB.',
   cancel: 'Cancel',
   submit: 'Import',
-  successToast: "Import started. We'll email you when it's done.",
+  successToast: 'Import started. Track the status in Import history.',
   // Error scenarios (Figma 9490:3313)
   errFormat: 'File format not supported. Upload a CSV, XLS, or XLSX file',
   errSize: 'File size exceeds the 10 MB limit',

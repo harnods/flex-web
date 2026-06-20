@@ -251,7 +251,7 @@ const dateField = css({ width: '100%' })
 </script>
 
 <template>
-  <MpFlex direction="column" gap="4" flex="1" minHeight="0">
+  <MpFlex direction="column" gap="6" flex="1" minHeight="0">
     <!-- ── Toolbar: search (added table) + Select employees ─────────────────── -->
     <MpFlex align="center" justify="flex-end" gap="3">
       <MpFlex width="280px">

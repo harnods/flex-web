@@ -10,7 +10,8 @@ import {
   MpInput, MpInputGroup, MpInputLeftAddon,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
-  css,
+  MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalFooter, MpModalCloseButton, MpModalOverlay,
+  toast, css,
 } from '@mekari/pixel3'
 
 definePageMeta({
@@ -67,7 +68,23 @@ const isSearchEmpty = computed(() => !isEmpty.value && filtered.value.length ===
 function onAction(action: 'view' | 'edit' | 'delete', row: Enrollment) {
   if (action === 'view') navigateTo(`/insurance/enrollments/${row.id}`)
   else if (action === 'edit') navigateTo(`/insurance/enrollments/create?edit=${row.id}`)
-  // 'delete' → TODO: confirm + remove
+  else if (action === 'delete') deleteTarget.value = row
+}
+
+// ── Delete enrollment ─────────────────────────────────────────────────────────
+// Deleting an enrollment does NOT delete its insurance plans — the admin removes
+// those manually from the Insurance plans page afterwards.
+const deleteTarget = ref<Enrollment | null>(null)
+const isDeleteOpen = computed(() => !!deleteTarget.value)
+
+function cancelDelete() { deleteTarget.value = null }
+function confirmDelete() {
+  const target = deleteTarget.value
+  if (!target) return
+  allEnrollments.value = allEnrollments.value.filter((e) => e.id !== target.id)
+  const name = target.name
+  deleteTarget.value = null
+  toast.notify({ position: 'top-center', variant: 'success', title: `Enrollment ${name} deleted.` })
 }
 
 // ── styles ─────────────────────────────────────────────────────────────────────
@@ -76,7 +93,7 @@ const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'to
 </script>
 
 <template>
-  <MpFlex direction="column" gap="4">
+  <MpFlex direction="column" gap="6">
     <!-- Empty state: no enrollments at all -->
     <InsuranceStateEmpty
       v-if="isEmpty"
@@ -162,6 +179,37 @@ const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'to
       </Pixel.div>
     </template>
   </MpFlex>
+
+  <!-- Delete enrollment confirmation -->
+  <MpModal
+    id="modal-delete-enrollment"
+    :is-open="isDeleteOpen"
+    size="sm"
+    is-centered
+    is-close-on-esc
+    is-close-on-overlay-click
+    @close="cancelDelete"
+  >
+    <MpModalContent>
+      <MpModalHeader>
+        Delete enrollment?
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpText size="body" color="text.default">
+          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ deleteTarget?.name }}</MpText>
+          will be permanently deleted. This action can't be undone.
+        </MpText>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="cancelDelete">Cancel</MpButton>
+          <MpButton variant="danger" size="md" @click="confirmDelete">Delete</MpButton>
+        </MpFlex>
+      </MpModalFooter>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
 
   <!-- FAB: scenario switcher (dev only) -->
   <Pixel.div :class="css({ position: 'fixed', bottom: '6', right: '6', zIndex: 'popover' })">

@@ -14,9 +14,11 @@
 <script setup lang="ts">
 import {
   Pixel,
-  MpFlex, MpInput, MpInputGroup, MpInputLeftAddon, MpButton,
+  MpFlex, MpText, MpInput, MpInputGroup, MpInputLeftAddon, MpButton,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
-  MpSelect, MpCheckbox, css,
+  MpSelect, MpCheckbox,
+  MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalFooter, MpModalCloseButton, MpModalOverlay,
+  toast, css,
 } from '@mekari/pixel3'
 import type { InsurancePlanGroup } from '~/components/InsurancePlanTable.vue'
 
@@ -65,6 +67,7 @@ const allGroups = ref<InsurancePlanGroup[]>([
     benefitTypes: ['Inpatient', 'Outpatient', 'Vision'],
     provider: 'CAR Life Insurance', broker: 'Premiro', status: 'Active',
     updatedAt: '12 Jun 2026', updatedBy: 'Andina Pramudita',
+    inUse: true,
     plans: [
       { id: 'p-ri2500', name: 'RI 2500' },
       { id: 'p-ri2000', name: 'RI 2000' },
@@ -78,6 +81,7 @@ const allGroups = ref<InsurancePlanGroup[]>([
     benefitTypes: ['Inpatient', 'Outpatient'],
     provider: 'Astra Life', broker: 'Premiro', status: 'Inactive',
     updatedAt: '3 Jan 2025', updatedBy: 'Rizal Chandra',
+    inUse: true,
     plans: [
       { id: 'p25-ri2000', name: 'RI 2000' },
       { id: 'p25-ri1500', name: 'RI 1500' },
@@ -171,6 +175,25 @@ const listEmptyKind = computed<'search' | 'filter' | null>(() => {
   if (hasFilter.value) return 'filter'
   return null
 })
+
+// ── Delete an insurance plan (a whole coverage period) — only when it isn't
+// associated with any enrollment. Removes the coverage period and all its plans.
+const deleteTarget = ref<InsurancePlanGroup | null>(null)
+const isDeleteOpen = computed(() => !!deleteTarget.value)
+
+function requestDelete(group: InsurancePlanGroup) {
+  if (group.inUse) return // guard: coverage periods used in an enrollment can't be deleted
+  deleteTarget.value = group
+}
+function cancelDelete() { deleteTarget.value = null }
+function confirmDelete() {
+  const target = deleteTarget.value
+  if (!target) return
+  allGroups.value = allGroups.value.filter((g) => g.id !== target.id)
+  const period = target.coveragePeriod
+  deleteTarget.value = null
+  toast.notify({ position: 'top-center', variant: 'success', title: `Insurance plan ${period} deleted.` })
+}
 </script>
 
 <template>
@@ -188,7 +211,7 @@ const listEmptyKind = computed<'search' | 'filter' | null>(() => {
   />
 
   <!-- List -->
-  <MpFlex v-else direction="column" gap="4">
+  <MpFlex v-else direction="column" gap="6">
     <MpFlex align="center" gap="3" wrap="wrap">
       <MpPopover id="benefit-filter" :is-close-on-select="false">
         <MpPopoverTrigger>
@@ -236,7 +259,7 @@ const listEmptyKind = computed<'search' | 'filter' | null>(() => {
     />
 
     <Pixel.div v-else>
-      <InsurancePlanTable :groups="paginatedGroups" />
+      <InsurancePlanTable :groups="paginatedGroups" @delete="requestDelete" />
       <TablePagination
         v-model:current-page="currentPage"
         v-model:per-page="perPage"
@@ -263,6 +286,39 @@ const listEmptyKind = computed<'search' | 'filter' | null>(() => {
       </MpFlex>
     </MpFlex>
   </Pixel.div>
+
+  <!-- Delete plan confirmation -->
+  <MpModal
+    id="modal-delete-plan"
+    :is-open="isDeleteOpen"
+    size="sm"
+    is-centered
+    is-close-on-esc
+    is-close-on-overlay-click
+    @close="cancelDelete"
+  >
+    <MpModalContent>
+      <MpModalHeader>
+        Delete insurance plan?
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpText size="body" color="text.default">
+          The <MpText as="span" size="body" weight="semiBold" color="text.default">{{ deleteTarget?.coveragePeriod }}</MpText>
+          coverage period and all
+          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ deleteTarget?.plans.length }}</MpText>
+          of its plans will be permanently deleted. This action can't be undone.
+        </MpText>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="cancelDelete">Cancel</MpButton>
+          <MpButton variant="danger" size="md" @click="confirmDelete">Delete</MpButton>
+        </MpFlex>
+      </MpModalFooter>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
 
   <!-- FAB: scenario switcher (dev only) -->
   <Pixel.div :class="css({ position: 'fixed', bottom: '6', right: '6', zIndex: 'popover' })">

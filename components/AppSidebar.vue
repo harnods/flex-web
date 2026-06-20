@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MpFlex, MpText, MpIcon, css, cx, token } from '@mekari/pixel3'
 
-interface NavChild { label: string; path: string }
+interface NavChild { label: string; path: string; dividerBefore?: boolean }
 interface NavItem {
   icon: string
   label: string
@@ -25,13 +25,16 @@ const coachmarkOpen = useState('insurance-coachmark-open', () => false)
 // Enrollment pages only exist once plans do — always show the submenu there,
 // even if the demo scenario resets to first-run on a direct load/reload.
 const hasInsurancePlans = computed(() =>
-  scenario.value !== 'first-run' || route.path.startsWith('/insurance/enrollments'),
+  scenario.value !== 'first-run'
+  || route.path.startsWith('/insurance/enrollments')
+  || route.path.startsWith('/insurance/plans/import-history'),
 )
-// Being on an enrollment route proves plans exist, so promote the scenario out
-// of first-run — that way clicking "Insurance plans" lands on the plans table,
-// never the first-run page.
+// Being on an enrollment or import-history route proves plans exist, so promote
+// the scenario out of first-run — that way clicking "Insurance plans" lands on
+// the plans table, never the first-run page.
 watchEffect(() => {
-  if (scenario.value === 'first-run' && route.path.startsWith('/insurance/enrollments')) {
+  if (scenario.value === 'first-run'
+    && (route.path.startsWith('/insurance/enrollments') || route.path.startsWith('/insurance/plans/import-history'))) {
     scenario.value = 'has-plans'
   }
 })
@@ -47,6 +50,7 @@ const group2 = computed<NavItem[]>(() => [
         children: [
           { label: 'Enrollments', path: '/insurance/enrollments' },
           { label: 'Insurance plans', path: '/insurance/plans' },
+          { label: 'Import history', path: '/insurance/plans/import-history', dividerBefore: true },
         ],
       }
     : { icon: 'protection', label: 'Insurance', path: '/insurance/plans' },
@@ -69,8 +73,15 @@ const group3: NavItem[] = [
 const allGroups = computed(() => [group1, group2.value, group3])
 const allItems = computed(() => [group1, group2.value, group3].flat())
 
+const pathMatches = (p: string) => route.path === p || route.path.startsWith(p + '/')
+// A child is active only if it's the most specific (longest path) sibling the
+// route matches — so "Insurance plans" (/insurance/plans) doesn't stay lit while
+// on the nested "Import history" (/insurance/plans/import-history) route.
+const isChildActive = (child: NavChild, siblings: NavChild[] = []) =>
+  pathMatches(child.path)
+  && !siblings.some(s => s.path !== child.path && s.path.length > child.path.length && pathMatches(s.path))
 const hasActiveChild = (item: NavItem) =>
-  !!item.children?.some(c => route.path === c.path || route.path.startsWith(c.path + '/'))
+  !!item.children?.some(c => pathMatches(c.path))
 const isItemActive = (item: NavItem) =>
   item.path
     ? (route.path === item.path || route.path.startsWith(item.path + '/'))
@@ -150,6 +161,7 @@ const navGroup = css({
   display: 'flex', flexDirection: 'column', gap: '0.5', py: '2', px: '2',
 })
 const groupDivider = css({ marginInline: '3', height: '1px', background: 'border.default' })
+const submenuDivider = css({ marginInline: '2', marginBlock: '1', height: '1px', background: 'border.default' })
 
 const itemBase = {
   display: 'flex', alignItems: 'center', gap: '2', w: 'full', height: '36px', px: '3',
@@ -274,20 +286,21 @@ const itemClassRail = (item: NavItem) => {
         <div :class="panelInner" :style="{ opacity: isPanelCollapsed ? 0 : 1, pointerEvents: isPanelCollapsed ? 'none' : 'auto' }">
           <div :class="sectionTitle">{{ activeParent?.label }}</div>
           <MpFlex direction="column" gap="0.5" flex="1" paddingInline="2" overflowY="auto" minHeight="0">
-            <NuxtLink
-              v-for="child in activeParent?.children"
-              :key="child.path"
-              :to="child.path"
-              :class="(route.path === child.path || route.path.startsWith(child.path + '/')) ? childActive : childDefault"
-              :aria-current="(route.path === child.path || route.path.startsWith(child.path + '/')) ? 'page' : undefined"
-            >
-              <span :class="css({ flex: '1 1 auto' })">{{ child.label }}</span>
-              <span
-                v-if="coachmarkOpen && child.path === '/insurance/enrollments'"
-                class="flex-pulse-dot"
-                aria-hidden="true"
-              />
-            </NuxtLink>
+            <template v-for="child in activeParent?.children" :key="child.path">
+              <div v-if="child.dividerBefore" :class="submenuDivider" />
+              <NuxtLink
+                :to="child.path"
+                :class="isChildActive(child, activeParent?.children) ? childActive : childDefault"
+                :aria-current="isChildActive(child, activeParent?.children) ? 'page' : undefined"
+              >
+                <span :class="css({ flex: '1 1 auto' })">{{ child.label }}</span>
+                <span
+                  v-if="coachmarkOpen && child.path === '/insurance/enrollments'"
+                  class="flex-pulse-dot"
+                  aria-hidden="true"
+                />
+              </NuxtLink>
+            </template>
           </MpFlex>
           <MpFlex align="center" justify="flex-end" height="68px" paddingInline="3" flexShrink="0">
             <button type="button" :class="ghostBtn" aria-label="Collapse submenu" @click="isPanelCollapsed = true">
