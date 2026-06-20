@@ -7,9 +7,10 @@
 -->
 <script setup lang="ts">
 import {
-  Pixel, MpFlex, MpText, MpTextlink, MpButton, MpTooltip,
+  Pixel, MpFlex, MpText, MpTextlink, MpButton, MpBadge, MpTooltip,
   MpInput, MpInputGroup, MpInputLeftAddon,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
+  MpDrawer, MpDrawerContent, MpDrawerHeader, MpDrawerBody, MpDrawerCloseButton, MpDrawerOverlay,
   css,
 } from '@mekari/pixel3'
 
@@ -28,6 +29,8 @@ interface EnrollmentDetail {
   benefitTypes: string[]
   provider: string
   broker: string
+  createdAt: string
+  createdBy: string
   notEnrolled: number | null
   totalEnrolled: number | null
   plans: PlanRow[]
@@ -39,6 +42,7 @@ const ENROLLMENTS: Record<string, EnrollmentDetail> = {
     name: 'FY2026 Rawat Inap', status: 'draft',
     coveragePeriod: '1 Jan - 31 Dec 2026', benefitTypes: ['Inpatient', 'Outpatient', 'Vision'],
     provider: 'PT Asuransi Allianz Life Indonesia', broker: 'PT Mekari Insurance Broker',
+    createdAt: '5 Dec 2025, 10:12', createdBy: 'Andina Pramudita',
     notEnrolled: null, totalEnrolled: null,
     plans: [
       { id: 'ri2500', name: 'RI 2500', enrolled: null, insured: null },
@@ -52,6 +56,7 @@ const ENROLLMENTS: Record<string, EnrollmentDetail> = {
     name: 'Dental Add-on 2026', status: 'active',
     coveragePeriod: '1 Jan - 31 Dec 2026', benefitTypes: ['Dental'],
     provider: 'PT Asuransi Allianz Life Indonesia', broker: 'PT Mekari Insurance Broker',
+    createdAt: '8 Jan 2026, 09:30', createdBy: 'Rizal Candra',
     notEnrolled: 5, totalEnrolled: 10,
     plans: [
       { id: 'dental-basic', name: 'Dental Basic', enrolled: 4, insured: 'Rp20.000.000' },
@@ -62,6 +67,7 @@ const ENROLLMENTS: Record<string, EnrollmentDetail> = {
     name: '2025 Health Enrollment', status: 'active',
     coveragePeriod: '1 Jan - 31 Dec 2025', benefitTypes: ['Inpatient', 'Outpatient'],
     provider: 'PT Asuransi Allianz Life Indonesia', broker: 'PT Mekari Insurance Broker',
+    createdAt: '18 Dec 2024, 14:05', createdBy: 'Andina Pramudita',
     notEnrolled: 2, totalEnrolled: 15,
     plans: [
       { id: 'ri2500', name: 'RI 2500', enrolled: 2, insured: 'Rp9.000.000' },
@@ -90,7 +96,10 @@ watchEffect(() => {
     headerRight: isDraft.value ? null : {
       label: 'Add employee', variant: 'primary', rightIcon: 'caret-down',
       items: [{ label: 'Add employee' }, { label: 'Upload from CSV' }],
-      onSelect: (_label: string) => { /* TODO: open add-employee / CSV upload flow */ },
+      onSelect: (label: string) => {
+        if (label === 'Add employee') navigateTo(`/insurance/enrollments/${route.params.id}/add`)
+        else if (label === 'Upload from CSV') navigateTo(`/insurance/enrollments/${route.params.id}/import`)
+      },
     },
   })
 })
@@ -104,6 +113,11 @@ const filteredPlans = computed(() => {
 function downloadList() { /* TODO: export plan list */ }
 function editEnrollment() { navigateTo(`/insurance/enrollments/create?edit=${route.params.id}`) }
 function viewPlanDetails(planId: string) { navigateTo(`/insurance/enrollments/${route.params.id}/${planId}`) }
+
+// Enrollment details drawer
+const isDetailsOpen = ref(false)
+function openDetails() { isDetailsOpen.value = true }
+function closeDetails() { isDetailsOpen.value = false }
 
 const overviewCard = css({
   display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -125,6 +139,7 @@ const exportBtn = css({
   border: 'none', background: 'transparent', color: 'icon.secondary',
   _hover: { background: 'background.neutral.hovered' },
 })
+const benefitList = css({ listStyleType: 'disc', paddingLeft: '4', color: 'text.default' })
 </script>
 
 <template>
@@ -136,7 +151,7 @@ const exportBtn = css({
         <MpFlex align="center" gap="4">
           <!-- Edit only available while the enrollment is a draft -->
           <MpTextlink v-if="isDraft" @click="editEnrollment">Edit enrollment</MpTextlink>
-          <MpTextlink>View enrollment details</MpTextlink>
+          <MpTextlink @click="openDetails">View enrollment details</MpTextlink>
         </MpFlex>
       </div>
 
@@ -209,4 +224,82 @@ const exportBtn = css({
       </MpTable>
     </MpTableContainer>
   </MpFlex>
+
+  <!-- ── Enrollment details drawer ───────────────────────────────────────────── -->
+  <MpDrawer
+    id="drawer-enrollment-details"
+    :is-open="isDetailsOpen"
+    placement="right"
+    size="md"
+    is-close-on-esc
+    is-close-on-overlay-click
+    @close="closeDetails"
+  >
+    <MpDrawerContent>
+      <MpDrawerHeader>
+        Enrollment details
+        <MpDrawerCloseButton />
+      </MpDrawerHeader>
+      <MpDrawerBody>
+        <MpFlex direction="column" gap="5">
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Enrollment name</MpText>
+            <MpFlex align="center" gap="2">
+              <MpText size="body" weight="semiBold" color="text.default">{{ enrollment.name }}</MpText>
+              <MpBadge v-if="isDraft" for="additionalInformation" type="announcement" size="md">Draft</MpBadge>
+            </MpFlex>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Coverage period</MpText>
+            <MpText size="body" color="text.default">{{ enrollment.coveragePeriod }}</MpText>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="2">
+            <MpText size="label" color="text.secondary">Benefit type</MpText>
+            <Pixel.ul :class="benefitList">
+              <Pixel.li v-for="b in enrollment.benefitTypes" :key="b">
+                <MpText size="body" color="text.default">{{ b }}</MpText>
+              </Pixel.li>
+            </Pixel.ul>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Insurance provider</MpText>
+            <MpText size="body" color="text.default">{{ enrollment.provider }}</MpText>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Insurance broker</MpText>
+            <MpText size="body" color="text.default">{{ enrollment.broker }}</MpText>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Not enrolled</MpText>
+            <MpText size="body" :color="enrollment.notEnrolled === null ? 'text.secondary' : 'text.default'">
+              {{ enrollment.notEnrolled === null ? DASH : `${enrollment.notEnrolled} employees` }}
+            </MpText>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Total enrolled</MpText>
+            <MpText size="body" :color="enrollment.totalEnrolled === null ? 'text.secondary' : 'text.default'">
+              {{ enrollment.totalEnrolled === null ? DASH : `${enrollment.totalEnrolled} employees` }}
+            </MpText>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Created on</MpText>
+            <MpText size="body" color="text.default">{{ enrollment.createdAt }}</MpText>
+          </MpFlex>
+
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" color="text.secondary">Created by</MpText>
+            <MpText size="body" color="text.default">{{ enrollment.createdBy }}</MpText>
+          </MpFlex>
+        </MpFlex>
+      </MpDrawerBody>
+    </MpDrawerContent>
+    <MpDrawerOverlay />
+  </MpDrawer>
 </template>

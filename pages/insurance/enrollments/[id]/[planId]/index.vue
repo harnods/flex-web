@@ -11,7 +11,7 @@ import {
   MpInput, MpInputGroup, MpInputLeftAddon,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
-  MpCheckbox, MpRadio, MpDatePicker,
+  MpCheckbox, MpRadio, MpDatePicker, MpSelect,
   MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalFooter, MpModalCloseButton, MpModalOverlay,
   MpDrawer, MpDrawerContent, MpDrawerHeader, MpDrawerBody, MpDrawerFooter,
   MpDrawerCloseButton, MpDrawerOverlay,
@@ -35,6 +35,20 @@ const PLANS: Record<string, { name: string; benefitType: string }> = {
   'ri500': { name: 'RI 500', benefitType: 'Inpatient' },
   'dental-basic': { name: 'Dental Basic', benefitType: 'Dental' },
   'dental-plus': { name: 'Dental Plus', benefitType: 'Dental' },
+}
+// Plans available per enrollment — drives the "change plan" picker in the edit drawer.
+const ENROLLMENT_PLANS: Record<string, { id: string; name: string }[]> = {
+  'e-2026': [
+    { id: 'ri2500', name: 'RI 2500' }, { id: 'ri2000', name: 'RI 2000' },
+    { id: 'ri1500', name: 'RI 1500' }, { id: 'ri1000', name: 'RI 1000' }, { id: 'ri500', name: 'RI 500' },
+  ],
+  'e-dental': [
+    { id: 'dental-basic', name: 'Dental Basic' }, { id: 'dental-plus', name: 'Dental Plus' },
+  ],
+  'e-2025': [
+    { id: 'ri2500', name: 'RI 2500' }, { id: 'ri2000', name: 'RI 2000' },
+    { id: 'ri1500', name: 'RI 1500' }, { id: 'ri1000', name: 'RI 1000' }, { id: 'ri500', name: 'RI 500' },
+  ],
 }
 
 interface EmployeeRow {
@@ -146,7 +160,7 @@ watchEffect(() => {
       items: [{ label: 'Add employee' }, { label: 'Upload from CSV' }],
       onSelect: (label: string) => {
         if (label === 'Add employee') navigateTo(`/insurance/enrollments/${route.params.id}/${route.params.planId}/add`)
-        /* TODO: Upload from CSV flow */
+        else if (label === 'Upload from CSV') navigateTo(`/insurance/enrollments/${route.params.id}/${route.params.planId}/import`)
       },
     },
   })
@@ -159,7 +173,17 @@ const search = ref('')
 const currentPage = ref(1)
 const perPage = ref(10)
 
-const employees = computed(() => PLAN_EMPLOYEES[`${route.params.id}/${route.params.planId}`] ?? [])
+const currentPlanId = computed(() => route.params.planId as string)
+const enrollmentPlans = computed(() => ENROLLMENT_PLANS[route.params.id as string] ?? [])
+// Local overlays over the mock roster (replace with API mutations).
+const removedIds = ref<string[]>([])
+const planEdits = reactive<Record<string, string>>({}) // empId → reassigned planId
+const depEdits = reactive<Record<string, { spouse: boolean; children: string[] }>>({}) // empId → enrolled dependents
+
+const employees = computed(() => (PLAN_EMPLOYEES[`${route.params.id}/${route.params.planId}`] ?? [])
+  .filter((e) => !removedIds.value.includes(e.id))
+  // Hide anyone reassigned to a different plan in this session.
+  .filter((e) => !planEdits[e.id] || planEdits[e.id] === currentPlanId.value))
 const branches = computed(() => [...new Set(employees.value.map((e) => e.branch))])
 const organizations = computed(() => [...new Set(employees.value.map((e) => e.organization))])
 
@@ -219,7 +243,70 @@ function viewDependents(row: EmployeeRow) {
 }
 function closeDepModal() { isDepModalOpen.value = false }
 
-function onAction(_action: string, _row: EmployeeRow) { /* TODO: view / edit / remove employee */ }
+// ── Per-employee dependent/plan helpers (apply session overlays) ────────────────
+function planNameOf(id: string) { return PLANS[id]?.name ?? id }
+function employeePlanId(empId: string) { return planEdits[empId] ?? currentPlanId.value }
+// Enrolled dependents for an employee — edited selection if any, else all registered.
+function employeeDeps(empId: string): DependentInfo {
+  const reg = DEPENDENTS[empId] ?? { children: [] }
+  const edit = depEdits[empId]
+  if (!edit) return reg
+  return { spouse: edit.spouse ? reg.spouse : undefined, children: edit.children }
+}
+function depCount(row: EmployeeRow) {
+  const d = depEdits[row.id]
+  if (!d) return row.dependents
+  return (d.spouse ? 1 : 0) + d.children.length
+}
+
+// ── Row actions: view (drawer) · edit (drawer) · remove (confirm) ───────────────
+function onAction(action: string, row: EmployeeRow) {
+  if (action === 'view') openView(row)
+  else if (action === 'edit') openEdit(row)
+  else if (action === 'remove') openRemove(row)
+}
+
+// Remove from plan — confirmation alert.
+const removeTarget = ref<EmployeeRow | null>(null)
+const isRemoveOpen = computed(() => !!removeTarget.value)
+function openRemove(row: EmployeeRow) { removeTarget.value = row }
+function cancelRemove() { removeTarget.value = null }
+function confirmRemove() {
+  const row = removeTarget.value
+  if (!row) return
+  removedIds.value = [...removedIds.value, row.id]
+  removeTarget.value = null
+  toast.notify({ position: 'top-center', variant: 'success', title: `${row.name} removed from ${plan.value.name}` })
+}
+
+// View details drawer — read-only plan + dependents.
+const viewTarget = ref<EmployeeRow | null>(null)
+const isViewOpen = computed(() => !!viewTarget.value)
+function openView(row: EmployeeRow) { viewTarget.value = row }
+function closeView() { viewTarget.value = null }
+
+// Edit drawer — change plan + manage dependents.
+const editTarget = ref<EmployeeRow | null>(null)
+const isEditOpen = computed(() => !!editTarget.value)
+const editPlanId = ref('')
+const editSpouse = ref(false)
+const editChildren = ref<string[]>([])
+function openEdit(row: EmployeeRow) {
+  editTarget.value = row
+  editPlanId.value = employeePlanId(row.id)
+  const deps = employeeDeps(row.id)
+  editSpouse.value = !!deps.spouse
+  editChildren.value = [...deps.children]
+}
+function closeEdit() { editTarget.value = null }
+function saveEdit() {
+  const row = editTarget.value
+  if (!row) return
+  planEdits[row.id] = editPlanId.value
+  depEdits[row.id] = { spouse: editSpouse.value, children: [...editChildren.value] }
+  editTarget.value = null
+  toast.notify({ position: 'top-center', variant: 'success', title: 'Changes saved' })
+}
 
 // ── Export data modal ────────────────────────────────────────────────────────────
 // Always-included identity columns (locked on). The rest default on but are toggleable.
@@ -585,7 +672,7 @@ const empId = css({ display: 'block' })
               <MpTableCell v-if="visibleCols.has('jobLevel')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.jobLevel }}</MpText></MpTableCell>
               <MpTableCell v-if="visibleCols.has('gender')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.gender }}</MpText></MpTableCell>
               <MpTableCell v-if="visibleCols.has('dependents')" as="td" :class="cellPad">
-                <MpTextlink @click="viewDependents(row)">{{ row.dependents }} dependents</MpTextlink>
+                <MpTextlink @click="viewDependents(row)">{{ depCount(row) }} dependents</MpTextlink>
               </MpTableCell>
               <MpTableCell v-if="visibleCols.has('effectiveDate')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.effectiveDate }}</MpText></MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledDate')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.enrolledDate }}</MpText></MpTableCell>
@@ -655,18 +742,16 @@ const empId = css({ display: 'block' })
           </MpFlex>
 
           <!-- Spouse -->
-          <MpFlex v-if="DEPENDENTS[depModalRow.id]?.spouse" direction="column">
+          <MpFlex v-if="DEPENDENTS[depModalRow.id]?.spouse" direction="column" gap="1">
             <MpText size="label" weight="semiBold" color="text.default">Spouse</MpText>
-            <MpFlex py="1">
-              <MpText size="body" color="text.default">{{ DEPENDENTS[depModalRow.id]?.spouse }}</MpText>
-            </MpFlex>
+            <MpText size="body" color="text.default">{{ DEPENDENTS[depModalRow.id]?.spouse }}</MpText>
           </MpFlex>
 
           <!-- Children -->
-          <MpFlex v-if="DEPENDENTS[depModalRow.id]?.children?.length" direction="column">
+          <MpFlex v-if="DEPENDENTS[depModalRow.id]?.children?.length" direction="column" gap="2">
             <MpText size="label" weight="semiBold" color="text.default">Children</MpText>
-            <MpFlex v-for="child in DEPENDENTS[depModalRow.id]?.children" :key="child" py="1">
-              <MpText size="body" color="text.default">{{ child }}</MpText>
+            <MpFlex direction="column" gap="1">
+              <MpText v-for="child in DEPENDENTS[depModalRow.id]?.children" :key="child" size="body" color="text.default">{{ child }}</MpText>
             </MpFlex>
           </MpFlex>
         </MpFlex>
@@ -889,6 +974,140 @@ const empId = css({ display: 'block' })
           </MpFlex>
         </MpFlex>
       </MpDrawerFooter>
+    </MpDrawerContent>
+    <MpDrawerOverlay />
+  </MpDrawer>
+
+  <!-- ── Remove from plan — confirmation ─────────────────────────────────────── -->
+  <MpModal id="modal-remove-employee" :is-open="isRemoveOpen" size="sm" is-centered is-close-on-esc is-close-on-overlay-click @close="cancelRemove">
+    <MpModalContent>
+      <MpModalHeader>
+        Remove from plan?
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpText size="body" color="text.default">
+          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ removeTarget?.name }}</MpText>
+          will be removed from the {{ plan.name }} plan. This action can't be undone.
+        </MpText>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="cancelRemove">Cancel</MpButton>
+          <MpButton variant="danger" size="md" @click="confirmRemove">Remove</MpButton>
+        </MpFlex>
+      </MpModalFooter>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
+
+  <!-- ── Edit employee drawer — change plan + manage dependents ───────────────── -->
+  <MpDrawer id="drawer-edit-employee" :is-open="isEditOpen" placement="right" size="md" is-close-on-esc is-close-on-overlay-click @close="closeEdit">
+    <MpDrawerContent>
+      <MpDrawerHeader>
+        Edit employee
+        <MpDrawerCloseButton />
+      </MpDrawerHeader>
+      <MpDrawerBody v-if="editTarget">
+        <MpFlex direction="column" gap="5">
+          <!-- Employee card -->
+          <MpFlex align="center" gap="3">
+            <MpAvatar :id="`edit-av-${editTarget.id}`" :name="editTarget.name" size="lg" :variant-color="avatarColor(editTarget.id)" />
+            <MpFlex direction="column" gap="0">
+              <MpText size="body" color="text.default">{{ editTarget.name }}</MpText>
+              <MpText size="body-small" color="text.secondary">{{ editTarget.employeeId }} | {{ editTarget.jobPosition }} | {{ editTarget.organization }}</MpText>
+            </MpFlex>
+          </MpFlex>
+
+          <!-- Insurance plan (change plan) -->
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" weight="semiBold" color="text.default">Insurance plan</MpText>
+            <MpPopover id="edit-plan-select" is-close-on-select>
+              <MpPopoverTrigger>
+                <MpFlex width="100%">
+                  <MpSelect :model-value="editPlanId" placeholder="Select plan" size="md" is-full-width @mousedown.prevent>
+                    <option v-if="editPlanId" :value="editPlanId">{{ planNameOf(editPlanId) }}</option>
+                  </MpSelect>
+                </MpFlex>
+              </MpPopoverTrigger>
+              <MpPopoverContent :class="css({ minWidth: '280px', maxHeight: '280px', overflowY: 'auto' })">
+                <MpPopoverList>
+                  <MpPopoverListItem v-for="p in enrollmentPlans" :key="p.id" :is-active="editPlanId === p.id" @click="editPlanId = p.id">{{ p.name }}</MpPopoverListItem>
+                </MpPopoverList>
+              </MpPopoverContent>
+            </MpPopover>
+          </MpFlex>
+
+          <!-- Dependents management -->
+          <MpFlex direction="column" gap="3">
+            <MpText size="label" weight="semiBold" color="text.default">Dependents</MpText>
+            <template v-if="DEPENDENTS[editTarget.id]?.spouse || DEPENDENTS[editTarget.id]?.children?.length">
+              <MpFlex v-if="DEPENDENTS[editTarget.id]?.spouse" direction="column" gap="2">
+                <MpText size="body-small" weight="semiBold" color="text.secondary">Spouse</MpText>
+                <MpCheckbox id="edit-spouse" :is-checked="editSpouse" @change="editSpouse = !editSpouse">{{ DEPENDENTS[editTarget.id]?.spouse }}</MpCheckbox>
+              </MpFlex>
+              <MpFlex v-if="DEPENDENTS[editTarget.id]?.children?.length" direction="column" gap="2">
+                <MpText size="body-small" weight="semiBold" color="text.secondary">Children</MpText>
+                <MpCheckbox v-for="c in DEPENDENTS[editTarget.id]?.children" :key="c" :id="`edit-child-${c}`" :value="c" v-model="editChildren">{{ c }}</MpCheckbox>
+              </MpFlex>
+            </template>
+            <MpText v-else size="body" color="text.secondary">No dependents registered.</MpText>
+          </MpFlex>
+        </MpFlex>
+      </MpDrawerBody>
+      <MpDrawerFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="closeEdit">Cancel</MpButton>
+          <MpButton variant="primary" size="md" @click="saveEdit">Save changes</MpButton>
+        </MpFlex>
+      </MpDrawerFooter>
+    </MpDrawerContent>
+    <MpDrawerOverlay />
+  </MpDrawer>
+
+  <!-- ── View details drawer — read-only plan + dependents ───────────────────── -->
+  <MpDrawer id="drawer-view-employee" :is-open="isViewOpen" placement="right" size="md" is-close-on-esc is-close-on-overlay-click @close="closeView">
+    <MpDrawerContent>
+      <MpDrawerHeader>
+        Enrollment details
+        <MpDrawerCloseButton />
+      </MpDrawerHeader>
+      <MpDrawerBody v-if="viewTarget">
+        <MpFlex direction="column" gap="5">
+          <!-- Employee card -->
+          <MpFlex align="center" gap="3">
+            <MpAvatar :id="`view-av-${viewTarget.id}`" :name="viewTarget.name" size="lg" :variant-color="avatarColor(viewTarget.id)" />
+            <MpFlex direction="column" gap="0">
+              <MpText size="body" color="text.default">{{ viewTarget.name }}</MpText>
+              <MpText size="body-small" color="text.secondary">{{ viewTarget.employeeId }} | {{ viewTarget.jobPosition }} | {{ viewTarget.organization }}</MpText>
+            </MpFlex>
+          </MpFlex>
+
+          <!-- Enrolled plan -->
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" weight="semiBold" color="text.secondary">Insurance plan</MpText>
+            <MpText size="body" color="text.default">{{ planNameOf(employeePlanId(viewTarget.id)) }}</MpText>
+          </MpFlex>
+
+          <!-- Dependents -->
+          <MpFlex direction="column" gap="3">
+            <MpText size="label" weight="semiBold" color="text.default">Dependents</MpText>
+            <template v-if="employeeDeps(viewTarget.id).spouse || employeeDeps(viewTarget.id).children.length">
+              <MpFlex v-if="employeeDeps(viewTarget.id).spouse" direction="column" gap="1">
+                <MpText size="body-small" color="text.secondary">Spouse</MpText>
+                <MpText size="body" color="text.default">{{ employeeDeps(viewTarget.id).spouse }}</MpText>
+              </MpFlex>
+              <MpFlex v-if="employeeDeps(viewTarget.id).children.length" direction="column" gap="2">
+                <MpText size="body-small" color="text.secondary">Children</MpText>
+                <MpFlex direction="column" gap="1">
+                  <MpText v-for="c in employeeDeps(viewTarget.id).children" :key="c" size="body" color="text.default">{{ c }}</MpText>
+                </MpFlex>
+              </MpFlex>
+            </template>
+            <MpText v-else size="body" color="text.secondary">No dependents enrolled.</MpText>
+          </MpFlex>
+        </MpFlex>
+      </MpDrawerBody>
     </MpDrawerContent>
     <MpDrawerOverlay />
   </MpDrawer>

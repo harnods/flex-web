@@ -2,6 +2,7 @@
 // Replace with the real import-logs API.
 
 export type ImportLogStatus = 'processing' | 'success' | 'partial' | 'failed'
+export type ImportLogType = 'plan' | 'employee'
 
 export interface ImportError {
   row: number
@@ -11,6 +12,7 @@ export interface ImportError {
 
 export interface ImportLog {
   id: string
+  type: ImportLogType
   fileName: string
   importedBy: string
   importedAt: string
@@ -21,10 +23,11 @@ export interface ImportLog {
   errors: ImportError[]
 }
 
-const LOGS: ImportLog[] = [
+// Reactive so a freshly-submitted import shows up in the history immediately.
+const LOGS = reactive<ImportLog[]>([
   {
-    id: 'imp-20260620',
-    fileName: 'insurance-plans-2026-q2.csv',
+    id: 'imp-20260620', type: 'employee',
+    fileName: 'ri2500-employees-jun.xlsx',
     importedBy: 'Rizal Chandra',
     importedAt: '20 Jun 2026, 11:30',
     status: 'processing',
@@ -32,7 +35,20 @@ const LOGS: ImportLog[] = [
     errors: [],
   },
   {
-    id: 'imp-20260612',
+    id: 'imp-20260615', type: 'employee',
+    fileName: 'dental-plus-employees.csv',
+    importedBy: 'Andina Pramudita',
+    importedAt: '15 Jun 2026, 16:45',
+    status: 'partial',
+    totalRows: 30, successRows: 27, failedRows: 3,
+    errors: [
+      { row: 5, column: 'Employee ID', message: 'Employee ID not found' },
+      { row: 11, column: 'Effective start date', message: 'Effective start date format is invalid. Use DD MMM YYYY' },
+      { row: 22, column: 'Employee ID', message: 'Employee is already enrolled in this plan' },
+    ],
+  },
+  {
+    id: 'imp-20260612', type: 'plan',
     fileName: 'insurance-plans-2026.xlsx',
     importedBy: 'Andina Pramudita',
     importedAt: '12 Jun 2026, 09:24',
@@ -41,7 +57,7 @@ const LOGS: ImportLog[] = [
     errors: [],
   },
   {
-    id: 'imp-20260210',
+    id: 'imp-20260210', type: 'plan',
     fileName: 'plans-update-feb.csv',
     importedBy: 'Rizal Chandra',
     importedAt: '10 Feb 2026, 14:02',
@@ -54,7 +70,7 @@ const LOGS: ImportLog[] = [
     ],
   },
   {
-    id: 'imp-20260103',
+    id: 'imp-20260103', type: 'plan',
     fileName: 'plans-q1.xlsx',
     importedBy: 'Andina Pramudita',
     importedAt: '3 Jan 2026, 08:10',
@@ -68,7 +84,7 @@ const LOGS: ImportLog[] = [
       { row: 5, column: 'Coverage period', message: 'Coverage period format is invalid. Use DD MMM YYYY' },
     ],
   },
-]
+])
 
 export const IMPORT_STATUS_META: Record<ImportLogStatus, { label: string; badge: string }> = {
   processing: { label: 'Processing', badge: 'information' },
@@ -77,8 +93,38 @@ export const IMPORT_STATUS_META: Record<ImportLogStatus, { label: string; badge:
   failed: { label: 'Failed', badge: 'critical' },
 }
 
+export const IMPORT_TYPE_LABEL: Record<ImportLogType, string> = {
+  plan: 'Insurance plan',
+  employee: 'Employee',
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function formatNow(): string {
+  const d = new Date()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`
+}
+
+let seq = 0
+
 export function useInsuranceImportLogs() {
   const logs = () => LOGS
   const getLog = (id: string) => LOGS.find((l) => l.id === id)
-  return { logs, getLog }
+  // Record a new import — lands at the top of the history as "Processing".
+  const addLog = (input: { type: ImportLogType; fileName: string; importedBy?: string }) => {
+    const id = `imp-new-${++seq}`
+    LOGS.unshift({
+      id,
+      type: input.type,
+      fileName: input.fileName,
+      importedBy: input.importedBy ?? 'Rizal Candra',
+      importedAt: formatNow(),
+      status: 'processing',
+      totalRows: 0, successRows: 0, failedRows: 0,
+      errors: [],
+    })
+    return id
+  }
+  return { logs, getLog, addLog }
 }

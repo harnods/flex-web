@@ -68,6 +68,7 @@ const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'mi
           <MpTableHead>
             <MpTableRow>
               <MpTableCell as="th">File name</MpTableCell>
+              <MpTableCell as="th">Import type</MpTableCell>
               <MpTableCell as="th">Imported by</MpTableCell>
               <MpTableCell as="th">Imported on</MpTableCell>
               <MpTableCell as="th">Status</MpTableCell>
@@ -81,6 +82,9 @@ const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'mi
                   <PxIcon name="excel-document" :size="20" color="icon.secondary" />
                   <MpText size="body" color="text.default">{{ row.fileName }}</MpText>
                 </MpFlex>
+              </MpTableCell>
+              <MpTableCell as="td" :class="cellPad">
+                <MpText size="body" color="text.default">{{ IMPORT_TYPE_LABEL[row.type] }}</MpText>
               </MpTableCell>
               <MpTableCell as="td" :class="cellPad">
                 <MpText size="body" color="text.default">{{ row.importedBy }}</MpText>
