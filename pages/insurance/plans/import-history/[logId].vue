@@ -1,12 +1,12 @@
 <!--
   Mekari Flex — Insurance · Import details (one import run)
-  Shows the import summary + status. For failed / partially-failed runs it lists
-  the per-row error logs so the admin can fix the source file and re-import.
+  Shows the import summary + status. For failed runs it lists the per-row error
+  logs grouped by row. Success shows only the import overview.
   Pixel 3 DT 2.4 only — no <style>, no raw CSS.
 -->
 <script setup lang="ts">
 import {
-  Pixel, MpFlex, MpText, MpTextlink, MpBadge,
+  MpFlex, MpText, MpTextlink, MpBadge,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
   toast, css,
 } from '@mekari/pixel3'
@@ -24,6 +24,15 @@ const route = useRoute()
 const { getLog } = useInsuranceImportLogs()
 const log = computed(() => getLog(route.params.logId as string))
 
+const errorsByRow = computed(() => {
+  const map = new Map<number, string[]>()
+  for (const err of log.value?.errors ?? []) {
+    if (!map.has(err.row)) map.set(err.row, [])
+    map.get(err.row)!.push(err.message)
+  }
+  return [...map.entries()].sort((a, b) => a[0] - b[0])
+})
+
 function downloadFile() {
   // TODO: wire to the real file-download endpoint.
   toast.notify({ position: 'top-center', variant: 'greeting', title: 'Download will start shortly.' })
@@ -38,7 +47,6 @@ const statRow = css({ display: 'flex', alignItems: 'flex-start', width: '100%', 
 const statCol = css({ display: 'flex', flexDirection: 'column', gap: '1', padding: '4', flex: '1 1 180px', minWidth: '160px' })
 const cellPad = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'top' })
 const rowNumCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'top', width: '88px' })
-const colNameCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'top', width: '200px' })
 </script>
 
 <template>
@@ -88,7 +96,7 @@ const colNameCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 't
       </div>
     </div>
 
-    <!-- ── Error logs (failed / partially-failed only) ─────────────────────── -->
+    <!-- ── Error logs (failed only) ──────────────────────────────────────── -->
     <template v-if="log.errors.length">
       <MpText size="label" weight="semiBold" color="text.default">Error logs ({{ log.errors.length }})</MpText>
       <MpTableContainer>
@@ -96,19 +104,22 @@ const colNameCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 't
           <MpTableHead>
             <MpTableRow>
               <MpTableCell as="th" :class="rowNumCell">Row</MpTableCell>
-              <MpTableCell as="th" :class="colNameCell">Column</MpTableCell>
               <MpTableCell as="th">Error message</MpTableCell>
             </MpTableRow>
           </MpTableHead>
           <MpTableBody>
-            <MpTableRow v-for="(err, i) in log.errors" :key="i">
-              <MpTableCell as="td" :class="rowNumCell"><MpText size="body" color="text.default">Row {{ err.row }}</MpText></MpTableCell>
-              <MpTableCell as="td" :class="colNameCell"><MpText size="body" color="text.default">{{ err.column }}</MpText></MpTableCell>
-              <MpTableCell as="td" :class="cellPad"><MpText size="body" color="text.danger">{{ err.message }}</MpText></MpTableCell>
+            <MpTableRow v-for="[rowNum, messages] in errorsByRow" :key="rowNum">
+              <MpTableCell as="td" :class="rowNumCell"><MpText size="body" color="text.default">Row {{ rowNum }}</MpText></MpTableCell>
+              <MpTableCell as="td" :class="cellPad">
+                <MpFlex direction="column" gap="1">
+                  <MpText v-for="(msg, i) in messages" :key="i" size="body" color="text.danger">{{ msg }}</MpText>
+                </MpFlex>
+              </MpTableCell>
             </MpTableRow>
           </MpTableBody>
         </MpTable>
       </MpTableContainer>
+
     </template>
 
     <!-- ── Processing: import still running ────────────────────────────────── -->
@@ -117,14 +128,6 @@ const colNameCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 't
       icon="loader-"
       title="Import in progress"
       description="This import is still being processed. Check back shortly for the result."
-    />
-
-    <!-- ── Success: no errors ──────────────────────────────────────────────── -->
-    <InsuranceStateEmpty
-      v-else
-      icon="check"
-      title="No errors"
-      description="All rows were imported successfully."
     />
   </MpFlex>
 

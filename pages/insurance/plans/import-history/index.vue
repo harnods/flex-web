@@ -1,7 +1,7 @@
 <!--
   Mekari Flex — Insurance · Import history (list of insurance-plan import runs)
-  Reached from the Insurance submenu. Shows each import's status; failed /
-  partially-failed runs link to a detail page with the error logs.
+  Reached from the Insurance submenu. Shows each import's status; failed
+  runs link to a detail page with the error logs.
   Pixel 3 DT 2.4 only — no <style>, no raw CSS.
 -->
 <script setup lang="ts">
