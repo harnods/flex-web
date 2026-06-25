@@ -7,9 +7,9 @@ import {
   Pixel,
   MpFlex, MpText, MpButton, MpIcon,
   MpFormControl, MpFormLabel,
-  MpInput, MpAutocomplete, MpCheckbox,
-  MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
-  MpRadio, MpTooltip,
+  MpInput, MpAutocomplete, MpCheckbox, MpRadio,
+  MpPopover, MpPopoverTrigger, MpPopoverContent,
+  MpTooltip,
   css, toast,
 } from '@mekari/pixel3'
 
@@ -21,45 +21,40 @@ definePageMeta({
   ],
 })
 
-const isEdit = true
-
 const NAME_MAX = 60
+const MAX_STEPS = 5
+const MAX_APPROVERS = 6
 
-interface Approver { id: string; type: 'employee' | 'position'; value: string }
-interface ApprovalStep { id: string; mode: 'everyone' | 'anyone'; approvers: Approver[] }
+interface Approver { id: string; value: string }
+interface ApprovalStep { id: string; approvers: Approver[] }
 
-const approvalName = ref(isEdit ? 'Approval untuk cabang Bandung' : '')
-const selectedBranches = ref<string[]>(isEdit ? ['Bandung', 'Cimahi'] : [])
-const steps = ref<ApprovalStep[]>(
-  isEdit
-    ? [
-        {
-          id: 's1', mode: 'everyone',
-          approvers: [
-            { id: 'a1', type: 'employee', value: 'Jessie Tan' },
-            { id: 'a2', type: 'position', value: 'Manager' },
-          ],
-        },
-        {
-          id: 's2', mode: 'everyone',
-          approvers: [
-            { id: 'a3', type: 'employee', value: 'Rizal Candra' },
-            { id: 'a4', type: 'employee', value: 'Ali Imran' },
-          ],
-        },
-      ]
-    : [{ id: 's1', mode: 'everyone', approvers: [{ id: 'a1', type: 'employee', value: '' }] }],
-)
+const approvalName = ref('Approval untuk cabang Bandung')
+const selectedBranches = ref<string[]>(['Bandung', 'Cimahi'])
+const transactionTypeMode = ref<'all' | 'selected'>('selected')
+const selectedTransactionTypes = ref<string[]>(['Cashout', 'e-Wallet top up'])
+const steps = ref<ApprovalStep[]>([
+  {
+    id: 's1',
+    approvers: [
+      { id: 'a1', value: 'Jessie Tan' },
+      { id: 'a2', value: 'Cinta Ayu' },
+    ],
+  },
+  {
+    id: 's2',
+    approvers: [
+      { id: 'a3', value: 'Rizal Candra' },
+      { id: 'a4', value: 'Ali Imran' },
+    ],
+  },
+])
 
 const branchOptions = ['Jakarta', 'BSD', 'Denpasar', 'Surabaya', 'Malang', 'Bandung', 'Cimahi']
 const employeeOptions = ['Jessie Tan', 'Cinta Ayu', 'Rizal Candra', 'Ali Imran', 'Siti Rahayu', 'Budi Santoso']
-const positionOptions = ['Manager', 'HR Staff', 'Director', 'Finance Staff', 'Supervisor', 'Team Lead']
+const TRANSACTION_TYPES = ['Cashout', 'e-Wallet top up', 'PDAM', 'Electricity', 'Mobile plan', 'Voucher']
 
-
-// Branches used in other existing rules — shown as "Used" in the dropdown.
-// Branches owned by the current rule are excluded.
 const allBranchesInRules = new Set(['Bandung', 'Cimahi'])
-const ownBranches = new Set(isEdit ? ['Bandung', 'Cimahi'] : [])
+const ownBranches = new Set(['Bandung', 'Cimahi'])
 
 const branchSearch = ref('')
 const filteredBranchOptions = computed(() => {
@@ -67,7 +62,6 @@ const filteredBranchOptions = computed(() => {
   return q ? branchOptions.filter(b => b.toLowerCase().includes(q)) : branchOptions
 })
 
-// Auto-focus search input when branch popover opens — ref on MpInput component
 const branchSearchInputRef = ref()
 function onBranchOpen() {
   nextTick(() => {
@@ -77,32 +71,14 @@ function onBranchOpen() {
   })
 }
 
-function setApproverType(step: ApprovalStep, approver: Approver, type: 'employee' | 'position') {
-  if (approver.type !== type) { approver.type = type; approver.value = '' }
-}
-
-// When a step switches to "everyone", reset any position approvers to employee
-watch(
-  () => steps.value.map(s => s.mode),
-  (newModes, oldModes) => {
-    steps.value.forEach((s, i) => {
-      if (oldModes[i] !== 'everyone' && newModes[i] === 'everyone') {
-        s.approvers.forEach(a => { if (a.type === 'position') { a.type = 'employee'; a.value = '' } })
-      }
-    })
-  },
-)
-
-// Approver choices per row — excludes same-type values already selected in other rows/steps
-function approverChoices(currentApproverId: string, type: 'employee' | 'position'): string[] {
-  const options = type === 'employee' ? employeeOptions : positionOptions
+function approverChoices(currentApproverId: string): string[] {
   const selected = new Set<string>()
   for (const s of steps.value) {
     for (const a of s.approvers) {
-      if (a.id !== currentApproverId && a.type === type && a.value) selected.add(a.value)
+      if (a.id !== currentApproverId && a.value) selected.add(a.value)
     }
   }
-  return options.filter(opt => !selected.has(opt))
+  return employeeOptions.filter(opt => !selected.has(opt))
 }
 
 const usedElsewhere = computed<Set<string>>(() => {
@@ -117,13 +93,11 @@ function removeBranch(branch: string) {
   selectedBranches.value = selectedBranches.value.filter(b => b !== branch)
 }
 
-const MAX_STEPS = 5
-
 function addStep() {
   if (steps.value.length >= MAX_STEPS) return
   steps.value.push({
-    id: `s${Date.now()}`, mode: 'everyone',
-    approvers: [{ id: `a${Date.now()}`, type: 'employee', value: '' }],
+    id: `s${Date.now()}`,
+    approvers: [{ id: `a${Date.now()}`, value: '' }],
   })
 }
 
@@ -133,7 +107,8 @@ function removeStep(stepId: string) {
 
 function addApprover(stepId: string) {
   const step = steps.value.find(s => s.id === stepId)
-  if (step) step.approvers.push({ id: `a${Date.now()}`, type: 'employee', value: '' })
+  if (step && step.approvers.length < MAX_APPROVERS)
+    step.approvers.push({ id: `a${Date.now()}`, value: '' })
 }
 
 function removeApprover(stepId: string, approverId: string) {
@@ -142,22 +117,24 @@ function removeApprover(stepId: string, approverId: string) {
     step.approvers = step.approvers.filter(a => a.id !== approverId)
 }
 
-// Validation errors
 const errName = ref('')
 const errBranch = ref('')
+const errTransactionType = ref('')
 interface StepErrors { approvers: string[] }
 const errSteps = ref<StepErrors[]>([])
 
 function validate(): boolean {
   let ok = true
 
-  errName.value = approvalName.value.trim()
-    ? '' : 'You must fill in Approval name'
+  errName.value = approvalName.value.trim() ? '' : 'You must fill in Approval name'
   if (errName.value) ok = false
 
-  errBranch.value = selectedBranches.value.length
-    ? '' : 'You must select at least one Branch'
+  errBranch.value = selectedBranches.value.length ? '' : 'You must select at least one Branch'
   if (errBranch.value) ok = false
+
+  errTransactionType.value = (transactionTypeMode.value === 'all' || selectedTransactionTypes.value.length)
+    ? '' : 'You must select at least one transaction type'
+  if (errTransactionType.value) ok = false
 
   errSteps.value = steps.value.map((step) => ({
     approvers: step.approvers.map((a) => {
@@ -180,14 +157,6 @@ function save() {
   navigateTo('/settings/approvals')
 }
 
-// Pre-computed style classes
-const typeTrigger = css({
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  h: '10', px: '3', w: 'full',
-  borderWidth: '1px', borderStyle: 'solid', borderColor: 'border.default',
-  borderRadius: 'md', cursor: 'pointer', bg: 'background.neutral', outline: 'none',
-  _hover: { borderColor: 'border.selected' }, _focus: { borderColor: 'border.selected' },
-})
 const branchTrigger = css({
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   h: '10', px: '3', w: 'full',
@@ -208,7 +177,6 @@ const stepBadge = css({
     <!-- ─── Approval name + Branch ─── -->
     <MpFlex direction="column" gap="0">
 
-      <!-- Approval name with character counter -->
       <MpFormControl id="approval-name" is-required :is-invalid="!!errName" :class="css({ pb: '5' })">
         <MpFlex justify="space-between" align="center" :class="css({ mb: '1' })">
           <MpFormLabel :class="css({ mb: '0' })">Approval name</MpFormLabel>
@@ -229,7 +197,6 @@ const stepBadge = css({
         </MpText>
       </MpFormControl>
 
-      <!-- Branch: MpPopover multi-select with MpCheckbox — stays open on each pick -->
       <MpFormControl id="branch" is-required :is-invalid="!!errBranch" :class="css({ pb: '5' })">
         <MpFormLabel>Branch</MpFormLabel>
         <Pixel.div :class="css({ width: '264px' })">
@@ -259,7 +226,7 @@ const stepBadge = css({
                   align="center"
                   :class="css({ px: '3', h: '9', justifyContent: 'space-between' })"
                 >
-                  <MpCheckbox :id="`br-${branch}`" :value="branch" v-model="selectedBranches" :is-disabled="usedElsewhere.has(branch)">
+                  <MpCheckbox :id="`br-${branch}`" :value="branch" v-model="selectedBranches">
                     {{ branch }}
                   </MpCheckbox>
                   <MpText v-if="usedElsewhere.has(branch)" size="body-small" color="text.secondary">
@@ -270,7 +237,6 @@ const stepBadge = css({
             </MpPopoverContent>
           </MpPopover>
         </Pixel.div>
-        <!-- Selected branches: 36px height, no gap between items -->
         <Pixel.div :class="css({ width: '264px' })">
           <MpFlex
             v-for="branch in selectedBranches"
@@ -294,27 +260,68 @@ const stepBadge = css({
         </MpText>
       </MpFormControl>
 
+      <!-- Transaction type -->
+      <MpFormControl id="transaction-type" is-required :is-invalid="!!errTransactionType">
+        <MpFormLabel>Transaction type</MpFormLabel>
+        <MpFlex direction="column" gap="2">
+          <Pixel.div :class="css({ py: '1' })">
+            <MpRadio
+              id="tx-all"
+              name="transaction-type"
+              value="all"
+              v-model="transactionTypeMode"
+              @change="errTransactionType = ''"
+            >
+              All transaction types
+            </MpRadio>
+          </Pixel.div>
+          <Pixel.div :class="css({ py: '1' })">
+            <MpRadio
+              id="tx-selected"
+              name="transaction-type"
+              value="selected"
+              v-model="transactionTypeMode"
+              @change="errTransactionType = ''"
+            >
+              Specific transaction types
+            </MpRadio>
+          </Pixel.div>
+          <MpFlex v-if="transactionTypeMode === 'selected'" direction="column" gap="2" :class="css({ pl: '6' })">
+            <MpCheckbox
+              v-for="type in TRANSACTION_TYPES"
+              :key="type"
+              :id="`tx-${type}`"
+              :value="type"
+              v-model="selectedTransactionTypes"
+              @change="errTransactionType = ''"
+            >
+              {{ type }}
+            </MpCheckbox>
+            <MpText v-if="errTransactionType" size="body-small" color="text.danger">
+              {{ errTransactionType }}
+            </MpText>
+          </MpFlex>
+        </MpFlex>
+      </MpFormControl>
+
     </MpFlex>
 
     <!-- ─── Approval steps ─── -->
     <MpFlex direction="column" gap="0">
 
-      <!-- Section header -->
       <MpFlex direction="column" gap="1" :class="css({ pb: '3' })">
         <MpText size="h2" weight="semiBold" color="text.default">Approval steps</MpText>
         <MpText size="body" color="text.secondary">
-          Define who must approve requests before they are processed. Steps are evaluated in order — step 1 first.
+          Set up the approval flow. Steps are completed in order, and any one of the approvers in a step can approve to move to the next.
         </MpText>
       </MpFlex>
 
-      <!-- Steps list -->
       <MpFlex
         v-for="(step, si) in steps"
         :key="step.id"
         direction="column"
         :class="css({ pb: '5' })"
       >
-        <!-- Step header: badge + title + delete -->
         <MpFlex align="center" gap="3" :class="css({ pb: '3' })">
           <Pixel.div :class="stepBadge">
             <MpText size="body" color="text.default">{{ si + 1 }}</MpText>
@@ -333,44 +340,11 @@ const stepBadge = css({
           </MpTooltip>
         </MpFlex>
 
-        <!-- Content: spacer (badge 24px) + gap-3 → aligns with title text -->
         <MpFlex gap="3">
           <Pixel.div :class="css({ w: '6', flexShrink: 0 })" />
           <MpFlex direction="column" flex="1" gap="0">
 
-            <!-- Approval mode radio -->
-            <MpFlex direction="column" :class="css({ pb: '5' })">
-              <Pixel.div :class="css({ py: '1' })">
-                <MpRadio
-                  :id="`mode-everyone-${step.id}`"
-                  :name="`mode-${step.id}`"
-                  value="everyone"
-                  v-model="step.mode"
-                >
-                  Everyone must approve
-                  <template #description>
-                    All approvers in this step must act before moving to the next step
-                  </template>
-                </MpRadio>
-              </Pixel.div>
-              <Pixel.div :class="css({ py: '1' })">
-                <MpRadio
-                  :id="`mode-anyone-${step.id}`"
-                  :name="`mode-${step.id}`"
-                  value="anyone"
-                  v-model="step.mode"
-                >
-                  Anyone can approve
-                  <template #description>
-                    Any one approver is enough to move the request forward
-                  </template>
-                </MpRadio>
-              </Pixel.div>
-            </MpFlex>
-
-            <!-- Approvers: type select + value autocomplete in one row -->
-            <MpFlex direction="column" gap="0" :class="css({ pb: '5' })">
-              <!-- Section label -->
+            <MpFlex direction="column" gap="0" :class="css({ pb: '3' })">
               <MpFlex align="center" gap="1" :class="css({ mb: '1' })">
                 <MpText size="body" weight="semiBold" color="text.default">Approver</MpText>
                 <MpText as="span" size="body" color="text.danger">*</MpText>
@@ -382,35 +356,14 @@ const stepBadge = css({
                 align="flex-start"
                 :class="css({ pb: ai < step.approvers.length - 1 ? '3' : '0' })"
               >
-                <!-- Type selector -->
-                <Pixel.div :class="css({ width: '140px', flexShrink: 0 })">
-                  <MpPopover is-close-on-select>
-                    <MpPopoverTrigger>
-                      <Pixel.button :class="typeTrigger">
-                        <MpText color="text.default">
-                          {{ approver.type === 'employee' ? 'Employee' : 'Job position' }}
-                        </MpText>
-                        <MpIcon name="caret-down" size="sm" color="icon.secondary" />
-                      </Pixel.button>
-                    </MpPopoverTrigger>
-                    <MpPopoverContent>
-                      <MpPopoverList>
-                        <MpPopoverListItem :is-active="approver.type === 'employee'" @click="setApproverType(step, approver, 'employee')">Employee</MpPopoverListItem>
-                        <MpPopoverListItem v-if="step.mode === 'anyone'" :is-active="approver.type === 'position'" @click="setApproverType(step, approver, 'position')">Job position</MpPopoverListItem>
-                      </MpPopoverList>
-                    </MpPopoverContent>
-                  </MpPopover>
-                </Pixel.div>
-
-                <!-- Value autocomplete + error -->
                 <MpFlex direction="column" gap="0" :class="css({ width: '264px' })">
                   <MpAutocomplete
                     :id="`approver-${step.id}-${ai}`"
                     v-model="approver.value"
-                    :data="approverChoices(approver.id, approver.type)"
+                    :data="approverChoices(approver.id)"
                     is-searchable
                     is-clearable
-                    :placeholder="approver.type === 'employee' ? 'Select employee' : 'Select job position'"
+                    placeholder="Select employee"
                     is-full-width
                     :is-loading="false"
                     :is-invalid="!!(errSteps[si]?.approvers[ai])"
@@ -420,8 +373,6 @@ const stepBadge = css({
                     {{ errSteps[si].approvers[ai] }}
                   </MpText>
                 </MpFlex>
-
-                <!-- Remove button -->
                 <MpTooltip label="Remove" position="top">
                   <MpButton
                     variant="ghost"
@@ -435,16 +386,25 @@ const stepBadge = css({
               </MpFlex>
             </MpFlex>
 
-            <!-- Add approver -->
-            <MpButton variant="ghost" size="sm" left-icon="add" @click="addApprover(step.id)">
-              Add approver
-            </MpButton>
+            <MpFlex direction="column" gap="1">
+              <MpButton
+                variant="ghost"
+                size="sm"
+                left-icon="add"
+                :is-disabled="step.approvers.length >= MAX_APPROVERS"
+                @click="addApprover(step.id)"
+              >
+                Add approver
+              </MpButton>
+              <MpText v-if="step.approvers.length >= MAX_APPROVERS" size="body-small" color="text.secondary">
+                Maximum {{ MAX_APPROVERS }} approvers per step
+              </MpText>
+            </MpFlex>
 
           </MpFlex>
         </MpFlex>
       </MpFlex>
 
-      <!-- Add approval step -->
       <MpFlex direction="column" gap="1">
         <MpButton variant="secondary" left-icon="add" :is-disabled="steps.length >= MAX_STEPS" @click="addStep">
           Add approval step

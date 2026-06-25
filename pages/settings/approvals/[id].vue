@@ -20,19 +20,18 @@ const setPageHeader = inject<(config: any) => void>('setPageHeader')
 
 interface Approver {
   id: string
-  type: 'employee' | 'position'
   name: string
   subtitle: string
 }
 interface ApprovalStep {
   id: string
-  mode: 'everyone' | 'anyone'
   approvers: Approver[]
 }
 interface ApprovalRule {
   id: string
   name: string
   branches: string[]
+  transactionTypes: 'all' | string[]
   updatedAt: Date
   updatedBy: string
   steps: ApprovalStep[]
@@ -43,23 +42,22 @@ const mockRules: Record<string, ApprovalRule> = {
     id: '1',
     name: 'Approval untuk cabang Bandung',
     branches: ['Bandung', 'Cimahi'],
+    transactionTypes: ['Cashout', 'e-Wallet top up'],
     updatedAt: new Date('2025-12-12T15:00:00'),
     updatedBy: 'Rizal Candra',
     steps: [
       {
         id: 's1',
-        mode: 'everyone',
         approvers: [
-          { id: 'a1', type: 'employee', name: 'Jessie Tan', subtitle: 'CP010 | Barista Head | Bar' },
-          { id: 'a2', type: 'employee', name: 'Cinta Ayu', subtitle: 'CP012 | Head of Front-house | Bar' },
+          { id: 'a1', name: 'Jessie Tan', subtitle: 'CP010 | Barista Head | Bar' },
+          { id: 'a2', name: 'Cinta Ayu', subtitle: 'CP012 | Head of Front-house | Bar' },
         ],
       },
       {
         id: 's2',
-        mode: 'anyone',
         approvers: [
-          { id: 'a3', type: 'employee', name: 'Rizal Candra', subtitle: 'CP001 | CEO | Management' },
-          { id: 'a4', type: 'employee', name: 'Ali Imran', subtitle: 'CP011 | HR Admin | HR' },
+          { id: 'a3', name: 'Rizal Candra', subtitle: 'CP001 | CEO | Management' },
+          { id: 'a4', name: 'Ali Imran', subtitle: 'CP011 | HR Admin | HR' },
         ],
       },
     ],
@@ -136,6 +134,25 @@ const stepBadge = css({
         </MpFlex>
       </MpFlex>
 
+      <!-- Transaction type row -->
+      <MpFlex gap="6">
+        <MpFlex direction="column" :class="css({ w: '168px', flexShrink: 0 })">
+          <MpFlex py="2">
+            <MpText size="body" color="text.secondary">Transaction type</MpText>
+          </MpFlex>
+        </MpFlex>
+        <MpFlex flex="1" minWidth="0">
+          <MpFlex py="2">
+            <MpText v-if="rule.transactionTypes === 'all'" size="body" color="text.default">All transaction types</MpText>
+            <Pixel.ul v-else :class="css({ paddingLeft: '5', listStyleType: 'disc' })">
+              <Pixel.li v-for="type in rule.transactionTypes" :key="type">
+                <MpText size="body" color="text.default">{{ type }}</MpText>
+              </Pixel.li>
+            </Pixel.ul>
+          </MpFlex>
+        </MpFlex>
+      </MpFlex>
+
       <!-- Last updated row -->
       <MpFlex gap="6">
         <MpFlex direction="column" :class="css({ w: '168px', flexShrink: 0 })">
@@ -176,35 +193,19 @@ const stepBadge = css({
             <MpText size="body" weight="semiBold" color="text.default">Approval step {{ si + 1 }}</MpText>
           </MpFlex>
 
-          <!-- Indented content -->
-          <MpFlex direction="column" gap="2" :class="css({ pl: '36px' })">
-
-            <!-- Mode as section title + caption -->
-            <MpFlex direction="column">
-              <MpText size="body" weight="semiBold" color="text.default">
-                {{ step.mode === 'everyone' ? 'Everyone must approve' : 'Anyone can approve' }}
-              </MpText>
-              <MpText size="body-small" color="text.secondary">
-                {{ step.mode === 'everyone'
-                  ? 'All approvers must approve before the request moves forward.'
-                  : 'Only one of the approvers listed below needs to approve.' }}
-              </MpText>
-            </MpFlex>
-
-            <!-- Approver list -->
-            <MpFlex direction="column" gap="1">
-              <MpFlex
-                v-for="approver in step.approvers"
-                :key="approver.id"
-                align="center"
-                gap="3"
-                py="2"
-              >
-                <MpAvatar :id="`avatar-${approver.id}`" :name="approver.name" size="lg" />
-                <MpFlex direction="column" gap="1">
-                  <MpText size="body" color="text.default">{{ approver.name }}</MpText>
-                  <MpText size="body-small" color="text.secondary">{{ approver.subtitle }}</MpText>
-                </MpFlex>
+          <!-- Approver list -->
+          <MpFlex direction="column" gap="1" :class="css({ pl: '36px' })">
+            <MpFlex
+              v-for="approver in step.approvers"
+              :key="approver.id"
+              align="center"
+              gap="3"
+              py="2"
+            >
+              <MpAvatar :id="`avatar-${approver.id}`" :name="approver.name" size="lg" />
+              <MpFlex direction="column" gap="1">
+                <MpText size="body" color="text.default">{{ approver.name }}</MpText>
+                <MpText size="body-small" color="text.secondary">{{ approver.subtitle }}</MpText>
               </MpFlex>
             </MpFlex>
           </MpFlex>
