@@ -26,30 +26,6 @@ export interface ImportLog {
 // Reactive so a freshly-submitted import shows up in the history immediately.
 const LOGS = reactive<ImportLog[]>([
   {
-    id: 'imp-20260620', type: 'employee',
-    fileName: 'ri2500-employees-jun.xlsx',
-    importedBy: 'Rizal Chandra',
-    importedAt: '20 Jun 2026, 11:30',
-    status: 'processing',
-    totalRows: 0, successRows: 0, failedRows: 0,
-    errors: [],
-  },
-  {
-    id: 'imp-20260615', type: 'employee',
-    fileName: 'dental-plus-employees.csv',
-    importedBy: 'Andina Pramudita',
-    importedAt: '15 Jun 2026, 16:45',
-    status: 'failed',
-    totalRows: 30, successRows: 0, failedRows: 30,
-    errors: [
-      { row: 5, column: 'Employee ID', message: 'Employee ID not found' },
-      { row: 5, column: 'Effective start date', message: 'Effective start date format is invalid. Use DD MMM YYYY' },
-      { row: 11, column: 'Employee ID', message: 'Employee is already enrolled in this plan' },
-      { row: 11, column: 'Plan name', message: 'Plan name is required' },
-      { row: 22, column: 'Employee ID', message: 'Employee ID not found' },
-    ],
-  },
-  {
     id: 'imp-20260612', type: 'plan',
     fileName: 'insurance-plans-2026.xlsx',
     importedBy: 'Andina Pramudita',

@@ -6,7 +6,7 @@
 -->
 <script setup lang="ts">
 import {
-  Pixel, MpFlex, MpText, MpTextlink, MpButton, MpBadge,
+  Pixel, MpFlex, MpText, MpTextlink, MpButton, MpBadge, MpSpinner,
   MpInput, MpInputGroup, MpInputLeftAddon,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
@@ -28,24 +28,12 @@ const COPY = {
   searchNotFoundDesc: 'Try a different enrollment name.',
 }
 
-interface Enrollment {
-  id: string
-  name: string
-  status?: 'draft'
-  coveragePeriod: string
-  updatedAt: string
-  updatedBy: string
-}
-
-const allEnrollments = ref<Enrollment[]>([
-  { id: 'e-2026', name: 'FY2026 Rawat Inap', status: 'draft', coveragePeriod: '1 Jan - 31 Dec 2026', updatedAt: '12 Jun 2026', updatedBy: 'Andina Pramudita' },
-  { id: 'e-dental', name: 'Dental Add-on 2026', coveragePeriod: '1 Jan - 31 Dec 2026', updatedAt: '10 Feb 2026', updatedBy: 'Rizal Chandra' },
-  { id: 'e-2025', name: '2025 Health Enrollment', coveragePeriod: '1 Jan - 31 Dec 2025', updatedAt: '3 Jan 2025', updatedBy: 'Andina Pramudita' },
-])
+const { enrollments, removeEnrollment } = useEnrollments()
+type Enrollment = ReturnType<typeof enrollments>[number]
 
 // ── Scenario (FAB) ────────────────────────────────────────────────────────────
 const scenario = useState<'has-data' | 'empty'>('enrollments-scenario', () => 'has-data')
-const source = computed(() => scenario.value === 'empty' ? [] : allEnrollments.value)
+const source = computed(() => scenario.value === 'empty' ? [] : enrollments())
 
 // ── Search + pagination ───────────────────────────────────────────────────────
 const search = ref('')
@@ -81,7 +69,7 @@ function cancelDelete() { deleteTarget.value = null }
 function confirmDelete() {
   const target = deleteTarget.value
   if (!target) return
-  allEnrollments.value = allEnrollments.value.filter((e) => e.id !== target.id)
+  removeEnrollment(target.id)
   const name = target.name
   deleteTarget.value = null
   toast.notify({ position: 'top-center', variant: 'success', title: `Enrollment ${name} deleted.` })
@@ -141,6 +129,12 @@ const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'to
                   <MpFlex align="center" gap="2" wrap="wrap">
                     <MpTextlink @click="navigateTo(`/insurance/enrollments/${row.id}`)">{{ row.name }}</MpTextlink>
                     <MpBadge v-if="row.status === 'draft'" for="tableStatus" type="announcement" size="md">Draft</MpBadge>
+                    <MpBadge v-else-if="row.status === 'processing'" for="tableStatus" type="information" size="md">
+                      <Pixel.span :class="css({ display: 'inline-flex', alignItems: 'center', gap: '1' })">
+                        <MpSpinner size="sm" color="blue.500" />
+                        Mapping employees…
+                      </Pixel.span>
+                    </MpBadge>
                   </MpFlex>
                 </MpTableCell>
                 <MpTableCell as="td" :class="cellPad">
@@ -160,7 +154,7 @@ const actionCell = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'to
                     <MpPopoverContent :class="css({ minWidth: '160px' })">
                       <MpPopoverList>
                         <MpPopoverListItem @click="onAction('view', row)">View details</MpPopoverListItem>
-                        <MpPopoverListItem @click="onAction('edit', row)">Edit</MpPopoverListItem>
+                        <MpPopoverListItem v-if="row.status === 'draft'" @click="onAction('edit', row)">Edit</MpPopoverListItem>
                         <MpPopoverListItem @click="onAction('delete', row)">Delete</MpPopoverListItem>
                       </MpPopoverList>
                     </MpPopoverContent>

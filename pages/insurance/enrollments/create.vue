@@ -52,8 +52,9 @@ function removeEmployment(e: string) {
 const step1Valid = computed(() => name.value.trim() && coverage.value && employment.value.length > 0)
 
 // ── Step 2 — Assign plans ───────────────────────────────────────────────────────
-const CRITERIA_OPTIONS = ['Job level', 'Job grade', 'Class', 'SBU - Benefit grade', 'SBU - Tribes', 'SBU - Custom Groups']
-const criteria = ref('')
+// Only "Job level" is supported for now, so the criteria is fixed and the field
+// is disabled (no dropdown).
+const criteria = ref('Job level')
 
 const PLANS = [
   { id: 'ri2500', name: 'RI 2500' },
@@ -114,9 +115,15 @@ const alertOpen = ref(false)
 function continueAnyway() { alertOpen.value = false; step.value = 3 }
 
 // ── Footer actions ───────────────────────────────────────────────────────────
+const { addEnrollment } = useEnrollments()
 // Cancel opens a "Leave this page?" coachmark (popover anchored to the button).
 function leavePage() { router.push('/insurance/enrollments') }
 function saveDraft() {
+  addEnrollment({
+    name: name.value.trim() || 'Untitled enrollment',
+    coveragePeriod: coverage.value,
+    asDraft: true,
+  })
   toast.notify({ position: 'top-center', variant: 'greeting', title: 'Enrollment saved as draft.' })
   router.push('/insurance/enrollments')
 }
@@ -126,7 +133,6 @@ const triggered = ref(false)
 const errName = computed(() => triggered.value && !name.value.trim())
 const errCoverage = computed(() => triggered.value && !coverage.value)
 const errEmployment = computed(() => triggered.value && employment.value.length === 0)
-const errCriteria = computed(() => triggered.value && !criteria.value)
 
 function back() { triggered.value = false; step.value = Math.max(1, step.value - 1) }
 function next() {
@@ -142,7 +148,8 @@ function next() {
   if (step.value < 3) step.value += 1
 }
 function save() {
-  toast.notify({ position: 'top-center', variant: 'success', title: 'Enrollment created successfully.' })
+  addEnrollment({ name: name.value.trim(), coveragePeriod: coverage.value })
+  toast.notify({ position: 'top-center', variant: 'success', title: 'Enrollment created. Mapping employees…' })
   router.push('/insurance/enrollments')
 }
 // Edit mode: save directly (from the split-button dropdown or the last step).
@@ -343,21 +350,11 @@ const reviewLabel = css({ width: '180px', flexShrink: 0 })
 
       <MpFlex direction="column" gap="1">
         <MpText size="label" weight="semiBold" color="text.default">Default plan criteria <span :class="required">*</span></MpText>
-        <MpPopover id="criteria-select" is-close-on-select>
-          <MpPopoverTrigger>
-            <MpFlex :class="fieldSelect" marginTop="1">
-              <MpSelect :model-value="criteria" placeholder="Select default plan criteria" size="md" is-full-width :is-invalid="errCriteria" @mousedown.prevent>
-                <option v-if="criteria" :value="criteria">{{ criteria }}</option>
-              </MpSelect>
-            </MpFlex>
-          </MpPopoverTrigger>
-          <MpPopoverContent :class="menu">
-            <MpPopoverList>
-              <MpPopoverListItem v-for="c in CRITERIA_OPTIONS" :key="c" :is-active="criteria === c" @click="criteria = c">{{ c }}</MpPopoverListItem>
-            </MpPopoverList>
-          </MpPopoverContent>
-        </MpPopover>
-        <MpText v-if="errCriteria" size="body-small" color="text.danger">Default plan criteria is required.</MpText>
+        <MpFlex :class="fieldSelect" marginTop="1">
+          <MpSelect :model-value="criteria" size="md" is-full-width is-disabled>
+            <option :value="criteria">{{ criteria }}</option>
+          </MpSelect>
+        </MpFlex>
       </MpFlex>
 
       <MpTableContainer>

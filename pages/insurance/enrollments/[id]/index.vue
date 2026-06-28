@@ -2,7 +2,7 @@
   Mekari Flex — Insurance · Enrollment details
   Scenario 1 (draft): enrolled/insured show "—", Edit enrollment available.
   Scenario 2 (active): real counts + insured amounts, per-row "View details",
-  an "Add employee" split/dropdown action, and Edit enrollment hidden.
+  an "Add employee" action, and Edit enrollment hidden.
   Source: Figma 9493:148306 (draft) / 9493:148311 (active). Pixel 3 DT 2.4 only.
 -->
 <script setup lang="ts">
@@ -86,7 +86,7 @@ const isDraft = computed(() => enrollment.value.status === 'draft')
 // Drive the title bar reactively via the layout's path-stamped injector. The
 // watchEffect re-runs whenever the active enrollment changes, so the title,
 // Draft badge, and "Add employee" button stay correct on client-side navigation
-// (no manual refresh needed). Active enrollments get the Add employee dropdown;
+// (no manual refresh needed). Active enrollments get the Add employee button;
 // drafts get neither the button nor real counts.
 const setPageHeader = inject<(c: unknown) => void>('setPageHeader')
 watchEffect(() => {
@@ -94,12 +94,8 @@ watchEffect(() => {
     title: enrollment.value.name,
     badge: isDraft.value ? { label: 'Draft', type: 'announcement' } : null,
     headerRight: isDraft.value ? null : {
-      label: 'Add employee', variant: 'primary', rightIcon: 'caret-down',
-      items: [{ label: 'Add employee' }, { label: 'Upload from CSV' }],
-      onSelect: (label: string) => {
-        if (label === 'Add employee') navigateTo(`/insurance/enrollments/${route.params.id}/add`)
-        else if (label === 'Upload from CSV') navigateTo(`/insurance/enrollments/${route.params.id}/import`)
-      },
+      label: 'Add employee', variant: 'primary',
+      onClick: () => navigateTo(`/insurance/enrollments/${route.params.id}/add`),
     },
   })
 })
