@@ -28,8 +28,9 @@ interface PageHeaderRight {
   label: string
   variant?: string
   rightIcon?: string
-  items: PageHeaderRightItem[]
-  onSelect: (label: string) => void
+  items?: PageHeaderRightItem[]
+  onSelect?: (label: string) => void
+  onClick?: () => void
 }
 interface TitleBadge { label: string; type?: string }
 interface PageHeader {
@@ -117,7 +118,7 @@ const tabStripReset = css({ '& .mp-tab-list__list': { marginBottom: '0' } })
           </MpFlex>
 
           <!-- Custom popover button (set by page via inject) -->
-          <MpPopover v-if="pageHeaderRight" is-close-on-select>
+          <MpPopover v-if="pageHeaderRight?.items?.length" is-close-on-select>
             <MpPopoverTrigger>
               <MpButton
                 :variant="pageHeaderRight.variant ?? 'primary'"
@@ -131,13 +132,23 @@ const tabStripReset = css({ '& .mp-tab-list__list': { marginBottom: '0' } })
                 <MpPopoverListItem
                   v-for="item in pageHeaderRight.items"
                   :key="item.label"
-                  @click="pageHeaderRight?.onSelect(item.label)"
+                  @click="pageHeaderRight?.onSelect?.(item.label)"
                 >
                   {{ item.label }}
                 </MpPopoverListItem>
               </MpPopoverList>
             </MpPopoverContent>
           </MpPopover>
+
+          <!-- Plain button (set by page via inject, no dropdown items) -->
+          <MpButton
+            v-else-if="pageHeaderRight"
+            :variant="pageHeaderRight.variant ?? 'primary'"
+            size="md"
+            @click="pageHeaderRight.onClick?.()"
+          >
+            {{ pageHeaderRight.label }}
+          </MpButton>
 
           <!-- Simple link button fallback -->
           <MpButton

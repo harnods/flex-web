@@ -156,12 +156,8 @@ watchEffect(() => {
       { label: enrollment.value.name, to: `/insurance/enrollments/${route.params.id}` },
     ],
     headerRight: {
-      label: 'Add employee', variant: 'primary', rightIcon: 'caret-down',
-      items: [{ label: 'Add employee' }, { label: 'Upload from CSV' }],
-      onSelect: (label: string) => {
-        if (label === 'Add employee') navigateTo(`/insurance/enrollments/${route.params.id}/${route.params.planId}/add`)
-        else if (label === 'Upload from CSV') navigateTo(`/insurance/enrollments/${route.params.id}/${route.params.planId}/import`)
-      },
+      label: 'Add employee', variant: 'primary',
+      onClick: () => navigateTo(`/insurance/enrollments/${route.params.id}/${route.params.planId}/add`),
     },
   })
 })
@@ -218,7 +214,7 @@ const COLUMNS = [
   { key: 'jobPosition',       label: 'Job position',       disabled: false },
   { key: 'jobLevel',          label: 'Job level',          disabled: false },
   { key: 'gender',            label: 'Gender',             disabled: false },
-  { key: 'dependents',        label: 'Dependents',         disabled: false },
+  { key: 'dependents',        label: 'Member',             disabled: false },
   { key: 'effectiveDate',     label: 'Effective date',     disabled: true },
   { key: 'enrolledDate',      label: 'Enrolled date',      disabled: true },
   { key: 'enrolledBy',        label: 'Enrolled by',        disabled: true },
@@ -233,16 +229,6 @@ function toggleCol(key: string) {
   visibleCols.value = next
 }
 
-// ── Dependents modal ───────────────────────────────────────────────────────────
-const isDepModalOpen = ref(false)
-const depModalRow = ref<EmployeeRow | null>(null)
-
-function viewDependents(row: EmployeeRow) {
-  depModalRow.value = row
-  isDepModalOpen.value = true
-}
-function closeDepModal() { isDepModalOpen.value = false }
-
 // ── Per-employee dependent/plan helpers (apply session overlays) ────────────────
 function planNameOf(id: string) { return PLANS[id]?.name ?? id }
 function employeePlanId(empId: string) { return planEdits[empId] ?? currentPlanId.value }
@@ -253,11 +239,36 @@ function employeeDeps(empId: string): DependentInfo {
   if (!edit) return reg
   return { spouse: edit.spouse ? reg.spouse : undefined, children: edit.children }
 }
-function depCount(row: EmployeeRow) {
-  const d = depEdits[row.id]
-  if (!d) return row.dependents
-  return (d.spouse ? 1 : 0) + d.children.length
+// Each covered member is one row, with the employee columns merged across them
+// (rowspan, spreadsheet-style). The FIRST row is the employee (primary insured)
+// with their own effective/enrolled date + enroller; the dependent rows follow,
+// each with their own (they can be enrolled separately).
+interface MemberRow { name: string; relation: string; effectiveDate: string; enrolledDate: string; enrolledBy: string }
+const LATER_MONTHS = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug']
+function depRows(row: EmployeeRow): MemberRow[] {
+  const d = employeeDeps(row.id)
+  // Row 1 — the employee themselves.
+  const rows: MemberRow[] = [{
+    name: row.name, relation: 'Employee',
+    effectiveDate: row.effectiveDate, enrolledDate: row.enrolledDate, enrolledBy: row.enrolledBy,
+  }]
+  const deps: { name: string; relation: string }[] = []
+  if (d.spouse) deps.push({ name: d.spouse, relation: 'Spouse' })
+  for (const c of d.children) deps.push({ name: c, relation: 'Child' })
+  const year = row.enrolledDate.split(' ').pop() ?? '2026'
+  deps.forEach((n, i) => {
+    const m = LATER_MONTHS[i % LATER_MONTHS.length]
+    rows.push({
+      ...n,
+      effectiveDate: `1 ${m} - 31 Dec ${year}`,
+      enrolledDate: `1 ${m} ${year}`,
+      enrolledBy: i % 2 === 0 ? 'Rizal Candra' : 'System',
+    })
+  })
+  return rows
 }
+// Precompute deps per page row so the template evaluates depRows() once each.
+const paginatedRows = computed(() => paginated.value.map((row) => ({ row, deps: depRows(row) })))
 
 // ── Row actions: view (drawer) · edit (drawer) · remove (confirm) ───────────────
 function onAction(action: string, row: EmployeeRow) {
@@ -321,7 +332,7 @@ const EXPORT_OPTIONAL = [
   { key: 'jobPosition', label: 'Job position' },
   { key: 'jobLevel', label: 'Job level' },
   { key: 'gender', label: 'Gender' },
-  { key: 'dependents', label: 'Dependents' },
+  { key: 'dependents', label: 'Member' },
   { key: 'enrolledDate', label: 'Enrolled date' },
   { key: 'enrolledBy', label: 'Enrolled by' },
 ]
@@ -360,10 +371,6 @@ function confirmExport() {
 // rAF poll instead of scroll event — Pixel's internal scroll handler swallows
 // the event, making event-based detection unreliable across environments.
 const isScrolled = ref(false)
-// `isAtEnd` = scrolled all the way to the right (or no horizontal overflow). The
-// right-sticky Actions column only needs its left border while content is still
-// scrolled underneath it — once at the end it sits at its natural position.
-const isAtEnd = ref(true)
 const tableWrapperRef = ref<HTMLElement | null>(null)
 let _scrollEl: HTMLElement | null = null
 let _rafId: number | null = null
@@ -371,9 +378,6 @@ function _pollScroll() {
   const el = _scrollEl
   const scrolled = (el?.scrollLeft ?? 0) > 0
   if (scrolled !== isScrolled.value) isScrolled.value = scrolled
-  // 1px tolerance for sub-pixel rounding.
-  const atEnd = !el || el.scrollLeft + el.clientWidth >= el.scrollWidth - 1
-  if (atEnd !== isAtEnd.value) isAtEnd.value = atEnd
   _rafId = requestAnimationFrame(_pollScroll)
 }
 onMounted(async () => {
@@ -526,6 +530,23 @@ const actionCell = css({
 // underneath it (hidden once scrolled to the end / no overflow). Inset box-shadow,
 // not a border — see nameBorder note (border-collapse + sticky drops real borders).
 const actionBorder = css({ boxShadow: 'inset 1px 0 0 0 #D0D6DD' })
+// Left divider on the Member column — separates the merged employee columns from
+// the per-member columns. Inset box-shadow (not a border) so it paints reliably
+// under border-collapse, matching the sticky-column dividers.
+const memberBorder = css({ boxShadow: 'inset 1px 0 0 0 #D0D6DD' })
+// Top-aligned variants for cells merged across dependent rows (rowspan) so the
+// merged content sits beside the first dependent, spreadsheet-style.
+const cellPadTop = css({ paddingTop: '2', paddingBottom: '2', verticalAlign: 'top', whiteSpace: 'nowrap', minWidth: '160px' })
+const nameCellTop = css({
+  position: 'sticky', left: '0', zIndex: 1, minWidth: '240px',
+  paddingTop: '2', paddingBottom: '2', verticalAlign: 'top', whiteSpace: 'nowrap',
+  background: 'background.neutral',
+})
+const actionCellTop = css({
+  position: 'sticky', right: '0', zIndex: 1,
+  paddingTop: '2', paddingBottom: '2', verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap',
+  background: 'background.neutral',
+})
 const iconBtn = css({
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   width: '40px', height: '40px', borderRadius: 'md', cursor: 'pointer',
@@ -645,53 +666,67 @@ const empId = css({ display: 'block' })
               <MpTableCell v-if="visibleCols.has('jobPosition')" as="th" :class="colMin">Job position</MpTableCell>
               <MpTableCell v-if="visibleCols.has('jobLevel')" as="th" :class="colMin">Job level</MpTableCell>
               <MpTableCell v-if="visibleCols.has('gender')" as="th" :class="colMin">Gender</MpTableCell>
-              <MpTableCell v-if="visibleCols.has('dependents')" as="th" :class="colMin">Dependents</MpTableCell>
+              <MpTableCell v-if="visibleCols.has('dependents')" as="th" :class="[colMin, memberBorder]">Member</MpTableCell>
               <MpTableCell v-if="visibleCols.has('effectiveDate')" as="th" :class="colMin">Effective date</MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledDate')" as="th" :class="colMin">Enrolled date</MpTableCell>
               <MpTableCell v-if="visibleCols.has('enrolledBy')" as="th" :class="colMin">Enrolled by</MpTableCell>
-              <MpTableCell as="th" :class="[actionHead, !isAtEnd && actionBorder]" />
+              <MpTableCell as="th" :class="[actionHead, actionBorder]" />
             </MpTableRow>
           </MpTableHead>
           <MpTableBody>
-            <MpTableRow v-for="row in paginated" :key="row.id">
-              <MpTableCell as="td" :class="[nameCell, isScrolled && nameBorder]">
-                <MpFlex align="center" gap="3">
-                  <MpAvatar :id="`avatar-${row.id}`" :name="row.name" size="lg" :variant-color="avatarColor(row.id)" />
+            <!-- One row per dependent; the other columns merge across them (rowspan). -->
+            <template v-for="{ row, deps } in paginatedRows" :key="row.id">
+              <MpTableRow v-for="(dep, di) in deps" :key="`${row.id}-${di}`">
+                <!-- Merged employee columns — rendered once on the first dependent row -->
+                <template v-if="di === 0">
+                  <MpTableCell as="td" :rowspan="deps.length" :class="[nameCellTop, isScrolled && nameBorder]">
+                    <MpFlex align="center" gap="3">
+                      <MpAvatar :id="`avatar-${row.id}`" :name="row.name" size="lg" :variant-color="avatarColor(row.id)" />
+                      <MpFlex direction="column" gap="0">
+                        <MpText size="body" color="text.default">{{ row.name }}</MpText>
+                        <MpText :class="empId" size="body-small" color="text.secondary">{{ row.employeeId }}</MpText>
+                      </MpFlex>
+                    </MpFlex>
+                  </MpTableCell>
+                  <MpTableCell v-if="visibleCols.has('employmentStatus')" as="td" :rowspan="deps.length" :class="cellPadTop">
+                    <MpBadge for="tableStatus" type="completed" size="md">{{ row.status }}</MpBadge>
+                  </MpTableCell>
+                  <MpTableCell v-if="visibleCols.has('branch')" as="td" :rowspan="deps.length" :class="cellPadTop"><MpText size="body" color="text.default">{{ row.branch }}</MpText></MpTableCell>
+                  <MpTableCell v-if="visibleCols.has('organization')" as="td" :rowspan="deps.length" :class="cellPadTop"><MpText size="body" color="text.default">{{ row.organization }}</MpText></MpTableCell>
+                  <MpTableCell v-if="visibleCols.has('jobPosition')" as="td" :rowspan="deps.length" :class="cellPadTop"><MpText size="body" color="text.default">{{ row.jobPosition }}</MpText></MpTableCell>
+                  <MpTableCell v-if="visibleCols.has('jobLevel')" as="td" :rowspan="deps.length" :class="cellPadTop"><MpText size="body" color="text.default">{{ row.jobLevel }}</MpText></MpTableCell>
+                  <MpTableCell v-if="visibleCols.has('gender')" as="td" :rowspan="deps.length" :class="cellPadTop"><MpText size="body" color="text.default">{{ row.gender }}</MpText></MpTableCell>
+                </template>
+
+                <!-- Dependents + their own dates / enroller — one per row (not merged) -->
+                <MpTableCell v-if="visibleCols.has('dependents')" as="td" :class="[cellPadTop, memberBorder]">
                   <MpFlex direction="column" gap="0">
-                    <MpText size="body" color="text.default">{{ row.name }}</MpText>
-                    <MpText :class="empId" size="body-small" color="text.secondary">{{ row.employeeId }}</MpText>
+                    <MpText size="body" color="text.default">{{ dep.name }}</MpText>
+                    <MpText v-if="dep.relation" size="body-small" color="text.secondary">{{ dep.relation }}</MpText>
                   </MpFlex>
-                </MpFlex>
-              </MpTableCell>
-              <MpTableCell v-if="visibleCols.has('employmentStatus')" as="td" :class="cellPad">
-                <MpBadge for="tableStatus" type="completed" size="md">{{ row.status }}</MpBadge>
-              </MpTableCell>
-              <MpTableCell v-if="visibleCols.has('branch')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.branch }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('organization')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.organization }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('jobPosition')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.jobPosition }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('jobLevel')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.jobLevel }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('gender')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.gender }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('dependents')" as="td" :class="cellPad">
-                <MpTextlink @click="viewDependents(row)">{{ depCount(row) }} dependents</MpTextlink>
-              </MpTableCell>
-              <MpTableCell v-if="visibleCols.has('effectiveDate')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.effectiveDate }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('enrolledDate')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.enrolledDate }}</MpText></MpTableCell>
-              <MpTableCell v-if="visibleCols.has('enrolledBy')" as="td" :class="cellPad"><MpText size="body" color="text.default">{{ row.enrolledBy }}</MpText></MpTableCell>
-              <MpTableCell as="td" :class="[actionCell, !isAtEnd && actionBorder]">
-                <MpPopover use-portal placement="bottom-end" is-close-on-select>
-                  <MpPopoverTrigger>
-                    <MpButton variant="secondary" size="md" right-icon="caret-down">Actions</MpButton>
-                  </MpPopoverTrigger>
-                  <MpPopoverContent :class="css({ minWidth: '160px' })">
-                    <MpPopoverList>
-                      <MpPopoverListItem @click="onAction('view', row)">View details</MpPopoverListItem>
-                      <MpPopoverListItem @click="onAction('edit', row)">Edit</MpPopoverListItem>
-                      <MpPopoverListItem @click="onAction('remove', row)">Remove from plan</MpPopoverListItem>
-                    </MpPopoverList>
-                  </MpPopoverContent>
-                </MpPopover>
-              </MpTableCell>
-            </MpTableRow>
+                </MpTableCell>
+                <MpTableCell v-if="visibleCols.has('effectiveDate')" as="td" :class="cellPadTop"><MpText size="body" color="text.default">{{ dep.effectiveDate }}</MpText></MpTableCell>
+                <MpTableCell v-if="visibleCols.has('enrolledDate')" as="td" :class="cellPadTop"><MpText size="body" color="text.default">{{ dep.enrolledDate }}</MpText></MpTableCell>
+                <MpTableCell v-if="visibleCols.has('enrolledBy')" as="td" :class="cellPadTop"><MpText size="body" color="text.default">{{ dep.enrolledBy }}</MpText></MpTableCell>
+
+                <template v-if="di === 0">
+                  <MpTableCell as="td" :rowspan="deps.length" :class="[actionCellTop, actionBorder]">
+                    <MpPopover use-portal placement="bottom-end" is-close-on-select>
+                      <MpPopoverTrigger>
+                        <MpButton variant="secondary" size="md" right-icon="caret-down">Actions</MpButton>
+                      </MpPopoverTrigger>
+                      <MpPopoverContent :class="css({ minWidth: '160px' })">
+                        <MpPopoverList>
+                          <MpPopoverListItem @click="onAction('view', row)">View details</MpPopoverListItem>
+                          <MpPopoverListItem @click="onAction('edit', row)">Edit</MpPopoverListItem>
+                          <MpPopoverListItem @click="onAction('remove', row)">Remove from plan</MpPopoverListItem>
+                        </MpPopoverList>
+                      </MpPopoverContent>
+                    </MpPopover>
+                  </MpTableCell>
+                </template>
+              </MpTableRow>
+            </template>
           </MpTableBody>
         </MpTable>
       </MpTableContainer>
@@ -703,62 +738,6 @@ const empId = css({ display: 'block' })
       />
     </div>
   </MpFlex>
-
-  <!-- ── Dependents modal ────────────────────────────────────────────────── -->
-  <MpModal
-    id="modal-dependents"
-    :is-open="isDepModalOpen"
-    size="md"
-    is-close-on-esc
-    is-close-on-overlay-click
-    @close="closeDepModal"
-  >
-    <MpModalContent>
-      <MpModalHeader>
-        View dependents
-        <MpModalCloseButton />
-      </MpModalHeader>
-      <MpModalBody v-if="depModalRow">
-        <MpFlex direction="column" gap="4">
-          <!-- Employee card -->
-          <MpFlex align="flex-start" gap="3" py="2">
-            <MpAvatar
-              :id="`dep-avatar-${depModalRow.id}`"
-              :name="depModalRow.name"
-              size="lg"
-              :variant-color="avatarColor(depModalRow.id)"
-            />
-            <MpFlex direction="column" gap="1">
-              <MpText size="body" color="text.default">{{ depModalRow.name }}</MpText>
-              <MpText size="body-small" color="text.secondary">
-                {{ depModalRow.employeeId }} | {{ depModalRow.jobPosition }} | {{ depModalRow.organization }}
-              </MpText>
-            </MpFlex>
-          </MpFlex>
-
-          <!-- No dependents -->
-          <MpFlex v-if="!DEPENDENTS[depModalRow.id]?.spouse && !DEPENDENTS[depModalRow.id]?.children?.length" py="2">
-            <MpText size="body" color="text.secondary">No dependents registered.</MpText>
-          </MpFlex>
-
-          <!-- Spouse -->
-          <MpFlex v-if="DEPENDENTS[depModalRow.id]?.spouse" direction="column" gap="1">
-            <MpText size="label" weight="semiBold" color="text.default">Spouse</MpText>
-            <MpText size="body" color="text.default">{{ DEPENDENTS[depModalRow.id]?.spouse }}</MpText>
-          </MpFlex>
-
-          <!-- Children -->
-          <MpFlex v-if="DEPENDENTS[depModalRow.id]?.children?.length" direction="column" gap="2">
-            <MpText size="label" weight="semiBold" color="text.default">Children</MpText>
-            <MpFlex direction="column" gap="1">
-              <MpText v-for="child in DEPENDENTS[depModalRow.id]?.children" :key="child" size="body" color="text.default">{{ child }}</MpText>
-            </MpFlex>
-          </MpFlex>
-        </MpFlex>
-      </MpModalBody>
-    </MpModalContent>
-    <MpModalOverlay />
-  </MpModal>
 
   <!-- ── Export data modal ───────────────────────────────────────────────── -->
   <MpModal
