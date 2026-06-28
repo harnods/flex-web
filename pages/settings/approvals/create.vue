@@ -7,7 +7,7 @@ import {
   Pixel,
   MpFlex, MpText, MpButton, MpIcon,
   MpFormControl, MpFormLabel,
-  MpInput, MpAutocomplete, MpCheckbox, MpRadio,
+  MpInput, MpAutocomplete, MpCheckbox,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
   MpTooltip,
   css, toast,
@@ -54,23 +54,16 @@ const steps = ref<ApprovalStep[]>(
 
 const branchOptions = ['Jakarta', 'BSD', 'Denpasar', 'Surabaya', 'Malang', 'Bandung', 'Cimahi']
 const employeeOptions = ['Jessie Tan', 'Cinta Ayu', 'Rizal Candra', 'Ali Imran', 'Siti Rahayu', 'Budi Santoso']
-const TRANSACTION_TYPES = ['Cashout', 'e-Wallet top up', 'PDAM', 'Electricity', 'Mobile plan', 'Voucher']
 
-const transactionTypeMode = ref<'all' | 'selected'>('all')
-const selectedTransactionTypes = ref<string[]>([])
-
-// Existing rules in the system — used for conflict detection
+// Existing rules in the system — used for conflict detection (by branch).
 const EXISTING_RULES = [
-  { id: 'r1', name: 'Bandung — Cashout', branches: ['Bandung'], transactionTypes: ['Cashout'] },
+  { id: 'r1', name: 'Approval cabang Bandung', branches: ['Bandung'] },
 ]
 
 const conflicts = computed(() =>
-  EXISTING_RULES.filter(rule => {
-    const branchOverlap = rule.branches.some(b => selectedBranches.value.includes(b))
-    if (!branchOverlap) return false
-    if (transactionTypeMode.value === 'all') return true
-    return rule.transactionTypes.some(t => selectedTransactionTypes.value.includes(t))
-  })
+  EXISTING_RULES.filter(rule =>
+    rule.branches.some(b => selectedBranches.value.includes(b)),
+  )
 )
 
 type Scenario = 'default' | 'conflict'
@@ -78,18 +71,14 @@ const scenario = ref<Scenario>('default')
 
 function setScenario(s: Scenario) {
   scenario.value = s
-  errName.value = ''; errBranch.value = ''; errTransactionType.value = ''; errSteps.value = []
+  errName.value = ''; errBranch.value = ''; errSteps.value = []
   if (s === 'default') {
     approvalName.value = ''
     selectedBranches.value = []
-    transactionTypeMode.value = 'all'
-    selectedTransactionTypes.value = []
     steps.value = [{ id: 's1', approvers: [{ id: 'a1', value: '' }] }]
   } else {
-    approvalName.value = 'Approval Bandung Cashout'
+    approvalName.value = 'Approval cabang Bandung'
     selectedBranches.value = ['Bandung']
-    transactionTypeMode.value = 'selected'
-    selectedTransactionTypes.value = ['Cashout']
     steps.value = [{ id: 's1', approvers: [{ id: 'a1', value: 'Rizal Candra' }] }]
   }
 }
@@ -164,7 +153,6 @@ function removeApprover(stepId: string, approverId: string) {
 // Validation errors
 const errName = ref('')
 const errBranch = ref('')
-const errTransactionType = ref('')
 interface StepErrors { approvers: string[] }
 const errSteps = ref<StepErrors[]>([])
 
@@ -178,10 +166,6 @@ function validate(): boolean {
   errBranch.value = selectedBranches.value.length
     ? '' : 'You must select at least one Branch'
   if (errBranch.value) ok = false
-
-  errTransactionType.value = (transactionTypeMode.value === 'all' || selectedTransactionTypes.value.length)
-    ? '' : 'You must select at least one transaction type'
-  if (errTransactionType.value) ok = false
 
   errSteps.value = steps.value.map((step) => ({
     approvers: step.approvers.map((a) => {
@@ -311,59 +295,16 @@ const stepBadge = css({
         </MpText>
       </MpFormControl>
 
-      <!-- Transaction type -->
-      <MpFormControl id="transaction-type" is-required :is-invalid="!!errTransactionType">
-        <MpFormLabel>Transaction type</MpFormLabel>
-        <MpFlex direction="column" gap="2">
-          <Pixel.div :class="css({ py: '1' })">
-            <MpRadio
-              id="tx-all"
-              name="transaction-type"
-              value="all"
-              v-model="transactionTypeMode"
-              @change="errTransactionType = ''"
-            >
-              All transaction types
-            </MpRadio>
-          </Pixel.div>
-          <Pixel.div :class="css({ py: '1' })">
-            <MpRadio
-              id="tx-selected"
-              name="transaction-type"
-              value="selected"
-              v-model="transactionTypeMode"
-              @change="errTransactionType = ''"
-            >
-              Specific transaction types
-            </MpRadio>
-          </Pixel.div>
-          <MpFlex v-if="transactionTypeMode === 'selected'" direction="column" gap="2" :class="css({ pl: '6' })">
-            <MpCheckbox
-              v-for="type in TRANSACTION_TYPES"
-              :key="type"
-              :id="`tx-${type}`"
-              :value="type"
-              v-model="selectedTransactionTypes"
-              @change="errTransactionType = ''"
-            >
-              {{ type }}
-            </MpCheckbox>
-            <MpText v-if="errTransactionType" size="body-small" color="text.danger">
-              {{ errTransactionType }}
-            </MpText>
-          </MpFlex>
-          <!-- Conflict warning -->
-          <Pixel.div
-            v-if="conflicts.length"
-            :class="css({ p: '3', borderRadius: 'md', bg: 'background.danger.subtle', borderWidth: '1px', borderStyle: 'solid', borderColor: 'border.danger' })"
-          >
-            <MpText size="body-small" color="text.danger" weight="semiBold">Conflict detected</MpText>
-            <MpText size="body-small" color="text.danger" :class="css({ mt: '1' })">
-              This rule overlaps with an existing rule: <strong>{{ conflicts.map(r => r.name).join(', ') }}</strong>. Each branch and transaction type combination can only have one active rule.
-            </MpText>
-          </Pixel.div>
-        </MpFlex>
-      </MpFormControl>
+      <!-- Conflict warning (branch overlap) -->
+      <Pixel.div
+        v-if="conflicts.length"
+        :class="css({ p: '3', borderRadius: 'md', bg: 'background.danger.subtle', borderWidth: '1px', borderStyle: 'solid', borderColor: 'border.danger' })"
+      >
+        <MpText size="body-small" color="text.danger" weight="semiBold">Conflict detected</MpText>
+        <MpText size="body-small" color="text.danger" :class="css({ mt: '1' })">
+          This rule overlaps with an existing rule: <strong>{{ conflicts.map(r => r.name).join(', ') }}</strong>. Each branch can only have one active rule.
+        </MpText>
+      </Pixel.div>
 
     </MpFlex>
 

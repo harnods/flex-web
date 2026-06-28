@@ -9,12 +9,17 @@ import {
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
   MpTableContainer, MpTable, MpTableHead, MpTableBody, MpTableRow, MpTableCell,
   MpInputGroup, MpInputLeftAddon, MpInput, MpSkeleton,
+  MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalFooter, MpModalCloseButton, MpModalOverlay,
   css, toast,
 } from '@mekari/pixel3'
 
 definePageMeta({
   title: 'Approvals',
   navKey: 'settings',
+  tabs: [
+    { label: 'Rules', to: '/settings/approvals' },
+    { label: 'Settings', to: '/settings/approvals/settings' },
+  ],
   headerAction: { label: 'Create approval', to: '/settings/approvals/create', variant: 'primary' },
 })
 
@@ -46,6 +51,23 @@ const currentPage = ref(1)
 const perPage = ref(10)
 const perPageOptions = [10, 25, 50, 100]
 const showEmptyState = ref(false)
+
+const deleteTarget = ref<ApprovalRule | null>(null)
+const isDeleteOpen = ref(false)
+
+function openDelete(rule: ApprovalRule) {
+  deleteTarget.value = rule
+  isDeleteOpen.value = true
+}
+
+function confirmDelete() {
+  if (deleteTarget.value) {
+    allRules.value = allRules.value.filter(r => r.id !== deleteTarget.value!.id)
+  }
+  isDeleteOpen.value = false
+  deleteTarget.value = null
+  toast.notify({ id: 'approval-deleted', position: 'top-center', variant: 'success', title: 'Approval deleted' })
+}
 
 const sourceRules = computed(() => showEmptyState.value ? [] : allRules.value)
 
@@ -179,7 +201,7 @@ const btnCell = css({ paddingTop: '2 !important', paddingBottom: '2 !important' 
                       <MpPopoverList>
                         <MpPopoverListItem @click="navigateTo(`/settings/approvals/${rule.id}`)">View details</MpPopoverListItem>
                         <MpPopoverListItem @click="navigateTo(`/settings/approvals/${rule.id}/edit`)">Edit</MpPopoverListItem>
-                        <MpPopoverListItem>Delete</MpPopoverListItem>
+                        <MpPopoverListItem @click="openDelete(rule)">Delete</MpPopoverListItem>
                       </MpPopoverList>
                     </MpPopoverContent>
                   </MpPopover>
@@ -258,6 +280,36 @@ const btnCell = css({ paddingTop: '2 !important', paddingBottom: '2 !important' 
       </Pixel.div>
     </Pixel.div>
   </MpFlex>
+
+  <!-- Delete confirmation -->
+  <MpModal
+    id="modal-delete-approval"
+    :is-open="isDeleteOpen"
+    size="sm"
+    is-close-on-esc
+    is-close-on-overlay-click
+    @close="isDeleteOpen = false"
+  >
+    <MpModalContent :class="css({ marginTop: '80px' })">
+      <MpModalHeader>
+        Delete this approval rule?
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpText size="body" color="text.default">
+          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ deleteTarget?.name }}</MpText>
+          will be permanently deleted. Requests already in progress will not be affected.
+        </MpText>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="isDeleteOpen = false">Cancel</MpButton>
+          <MpButton variant="danger" size="md" @click="confirmDelete">Delete</MpButton>
+        </MpFlex>
+      </MpModalFooter>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
 
   <!-- FAB: scenario switcher (dev only) -->
   <Pixel.div :class="css({ position: 'fixed', bottom: '6', right: '6', zIndex: 'popover' })">
