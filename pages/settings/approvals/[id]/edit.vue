@@ -7,8 +7,9 @@ import {
   Pixel,
   MpFlex, MpText, MpButton, MpIcon,
   MpFormControl, MpFormLabel,
-  MpInput, MpAutocomplete, MpCheckbox, MpRadio,
+  MpInput, MpAutocomplete, MpCheckbox,
   MpPopover, MpPopoverTrigger, MpPopoverContent,
+  MpModal, MpModalContent, MpModalHeader, MpModalBody, MpModalFooter, MpModalCloseButton, MpModalOverlay,
   MpTooltip,
   css, toast,
 } from '@mekari/pixel3'
@@ -30,8 +31,6 @@ interface ApprovalStep { id: string; approvers: Approver[] }
 
 const approvalName = ref('Approval untuk cabang Bandung')
 const selectedBranches = ref<string[]>(['Bandung', 'Cimahi'])
-const transactionTypeMode = ref<'all' | 'selected'>('selected')
-const selectedTransactionTypes = ref<string[]>(['Cashout', 'e-Wallet top up'])
 const steps = ref<ApprovalStep[]>([
   {
     id: 's1',
@@ -51,7 +50,6 @@ const steps = ref<ApprovalStep[]>([
 
 const branchOptions = ['Jakarta', 'BSD', 'Denpasar', 'Surabaya', 'Malang', 'Bandung', 'Cimahi']
 const employeeOptions = ['Jessie Tan', 'Cinta Ayu', 'Rizal Candra', 'Ali Imran', 'Siti Rahayu', 'Budi Santoso']
-const TRANSACTION_TYPES = ['Cashout', 'e-Wallet top up', 'PDAM', 'Electricity', 'Mobile plan', 'Voucher']
 
 const allBranchesInRules = new Set(['Bandung', 'Cimahi'])
 const ownBranches = new Set(['Bandung', 'Cimahi'])
@@ -117,9 +115,10 @@ function removeApprover(stepId: string, approverId: string) {
     step.approvers = step.approvers.filter(a => a.id !== approverId)
 }
 
+const isConfirmOpen = ref(false)
+
 const errName = ref('')
 const errBranch = ref('')
-const errTransactionType = ref('')
 interface StepErrors { approvers: string[] }
 const errSteps = ref<StepErrors[]>([])
 
@@ -131,10 +130,6 @@ function validate(): boolean {
 
   errBranch.value = selectedBranches.value.length ? '' : 'You must select at least one Branch'
   if (errBranch.value) ok = false
-
-  errTransactionType.value = (transactionTypeMode.value === 'all' || selectedTransactionTypes.value.length)
-    ? '' : 'You must select at least one transaction type'
-  if (errTransactionType.value) ok = false
 
   errSteps.value = steps.value.map((step) => ({
     approvers: step.approvers.map((a) => {
@@ -148,6 +143,11 @@ function validate(): boolean {
 
 function save() {
   if (!validate()) return
+  isConfirmOpen.value = true
+}
+
+function confirmSave() {
+  isConfirmOpen.value = false
   toast.notify({
     id: 'approval-saved',
     position: 'top-center',
@@ -258,50 +258,6 @@ const stepBadge = css({
         <MpText v-if="errBranch" size="body-small" color="text.danger" :class="css({ mt: '1' })">
           {{ errBranch }}
         </MpText>
-      </MpFormControl>
-
-      <!-- Transaction type -->
-      <MpFormControl id="transaction-type" is-required :is-invalid="!!errTransactionType">
-        <MpFormLabel>Transaction type</MpFormLabel>
-        <MpFlex direction="column" gap="2">
-          <Pixel.div :class="css({ py: '1' })">
-            <MpRadio
-              id="tx-all"
-              name="transaction-type"
-              value="all"
-              v-model="transactionTypeMode"
-              @change="errTransactionType = ''"
-            >
-              All transaction types
-            </MpRadio>
-          </Pixel.div>
-          <Pixel.div :class="css({ py: '1' })">
-            <MpRadio
-              id="tx-selected"
-              name="transaction-type"
-              value="selected"
-              v-model="transactionTypeMode"
-              @change="errTransactionType = ''"
-            >
-              Specific transaction types
-            </MpRadio>
-          </Pixel.div>
-          <MpFlex v-if="transactionTypeMode === 'selected'" direction="column" gap="2" :class="css({ pl: '6' })">
-            <MpCheckbox
-              v-for="type in TRANSACTION_TYPES"
-              :key="type"
-              :id="`tx-${type}`"
-              :value="type"
-              v-model="selectedTransactionTypes"
-              @change="errTransactionType = ''"
-            >
-              {{ type }}
-            </MpCheckbox>
-            <MpText v-if="errTransactionType" size="body-small" color="text.danger">
-              {{ errTransactionType }}
-            </MpText>
-          </MpFlex>
-        </MpFlex>
       </MpFormControl>
 
     </MpFlex>
@@ -423,4 +379,33 @@ const stepBadge = css({
     </MpFlex>
 
   </MpFlex>
+
+  <!-- Save confirmation -->
+  <MpModal
+    id="modal-save-approval"
+    :is-open="isConfirmOpen"
+    size="sm"
+    is-close-on-esc
+    is-close-on-overlay-click
+    @close="isConfirmOpen = false"
+  >
+    <MpModalContent :class="css({ marginTop: '80px' })">
+      <MpModalHeader>
+        Save approval changes?
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpText size="body" color="text.default">
+          These changes will only apply to new requests submitted after saving. Requests that are already in progress will continue with their original approval flow.
+        </MpText>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="isConfirmOpen = false">Cancel</MpButton>
+          <MpButton variant="primary" size="md" @click="confirmSave">Save changes</MpButton>
+        </MpFlex>
+      </MpModalFooter>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
 </template>

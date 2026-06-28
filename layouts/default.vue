@@ -16,10 +16,12 @@
 import {
   MpFlex, MpText, MpButton, MpBadge,
   MpPopover, MpPopoverTrigger, MpPopoverContent, MpPopoverList, MpPopoverListItem,
+  MpTabs, MpTabList, MpTab,
   MpToastManager, css,
 } from '@mekari/pixel3'
 
 interface Crumb { label: string; to: string }
+interface SectionTab { label: string; to: string }
 interface HeaderAction { label: string; to: string; variant?: string }
 interface PageHeaderRightItem { label: string; isDanger?: boolean }
 interface PageHeaderRight {
@@ -66,11 +68,27 @@ const breadcrumb = computed<Crumb[]>(() =>
   || (route.meta.breadcrumb as Crumb[] | undefined)
   || [])
 
+// Section tabs: in-page navigation rendered below the title bar, outside the
+// stage. Declared per page via definePageMeta({ tabs: [{ label, to }] }).
+const sectionTabs = computed<SectionTab[]>(() => (route.meta.tabs as SectionTab[] | undefined) || [])
+const activeTab = computed<number>({
+  get: () => Math.max(0, sectionTabs.value.findIndex(t => t.to === route.path)),
+  set: (i) => {
+    const t = sectionTabs.value[i]
+    if (t && t.to !== route.path) navigateTo(t.to)
+  },
+})
+
 const crumbLink = css({
   fontFamily: 'body', fontSize: 'sm', lineHeight: 'md',
   color: 'text.link', textDecoration: 'none', cursor: 'pointer',
   _hover: { textDecoration: 'underline' },
 })
+
+// MpTabList ships a 24px margin-bottom (spacing-6) meant to separate it from
+// tab panels. We render tabs as nav with no panels, flush against the stage —
+// so zero it out. Higher specificity (descendant + class) beats the default.
+const tabStripReset = css({ '& .mp-tab-list__list': { marginBottom: '0' } })
 </script>
 
 <template>
@@ -81,7 +99,7 @@ const crumbLink = css({
       <AppSidebar />
 
       <MpFlex as="main" direction="column" flex="1" minWidth="0">
-        <!-- title bar 72px: no Pixel spacing token equivalent. -->
+        <!-- title bar 72px: no Pixel spacing token equivalent. Always 72px. -->
         <MpFlex align="center" justify="space-between" gap="4" height="72px" paddingInline="6">
           <MpFlex direction="column" gap="0.5" minWidth="0">
             <MpFlex v-if="breadcrumb.length" align="center" gap="1">
@@ -130,6 +148,15 @@ const crumbLink = css({
           >
             {{ headerAction.label }}
           </MpButton>
+        </MpFlex>
+
+        <!-- Section tabs: below the title bar, outside the stage. -->
+        <MpFlex v-if="sectionTabs.length" paddingInline="6" :class="tabStripReset">
+          <MpTabs v-model="activeTab" is-manual :is-show-border="false">
+            <MpTabList>
+              <MpTab v-for="t in sectionTabs" :key="t.to">{{ t.label }}</MpTab>
+            </MpTabList>
+          </MpTabs>
         </MpFlex>
 
         <!-- Stage: white sheet, rounded top-left, top + left border only. -->
