@@ -290,6 +290,65 @@ function confirmRemove() {
   toast.notify({ position: 'top-center', variant: 'success', title: `${row.name} removed from ${plan.value.name}` })
 }
 
+// ── Bulk select + bulk remove ────────────────────────────────────────────────────
+// Selection is per employee (the merged row), driven by a checkbox in the first
+// column. The select-all checkbox toggles every employee on the current page; when
+// any are selected the table header turns into a bulk-action bar.
+const selectedIds = ref<string[]>([])
+const pageIds = computed(() => paginated.value.map((e) => e.id))
+const allPageSelected = computed(() => pageIds.value.length > 0 && pageIds.value.every((id) => selectedIds.value.includes(id)))
+const someSelected = computed(() => selectedIds.value.length > 0)
+const isPagePartial = computed(() => someSelected.value && !allPageSelected.value)
+// Columns rendered in the header (name + visible optional cols + actions) — drives
+// the colspan of the bulk-action bar.
+const renderedColCount = computed(() => 2 + COLUMNS.filter((c) => c.key !== 'employeeName' && visibleCols.value.has(c.key)).length)
+
+function toggleSelectAllRows(checked: boolean) {
+  if (checked) selectedIds.value = [...new Set([...selectedIds.value, ...pageIds.value])]
+  else selectedIds.value = selectedIds.value.filter((id) => !pageIds.value.includes(id))
+}
+function toggleRowSelect(id: string, checked: boolean) {
+  if (checked) selectedIds.value = [...new Set([...selectedIds.value, id])]
+  else selectedIds.value = selectedIds.value.filter((x) => x !== id)
+}
+function clearSelection() { selectedIds.value = [] }
+
+const bulkRemoveOpen = ref(false)
+function openBulkRemove() { if (someSelected.value) bulkRemoveOpen.value = true }
+function confirmBulkRemove() {
+  const n = selectedIds.value.length
+  removedIds.value = [...removedIds.value, ...selectedIds.value]
+  selectedIds.value = []
+  bulkRemoveOpen.value = false
+  toast.notify({ position: 'top-center', variant: 'success', title: `${n} ${n === 1 ? 'employee' : 'employees'} removed from ${plan.value.name}` })
+}
+// Esc clears the selection (the bulk bar advertises this).
+function onBulkKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && someSelected.value && !bulkRemoveOpen.value) clearSelection()
+}
+onMounted(() => window.addEventListener('keydown', onBulkKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onBulkKeydown))
+// Bulk-action bar: a single full-colspan cell with zero padding, whose inner bar
+// is sticky to the viewport (sized via viewportWidth) so it never scrolls
+// horizontally. Inner height matches the normal ~52px header.
+const bulkBarCell = css({ padding: '0 !important', background: 'background.surface' })
+const bulkBarInner = css({
+  position: 'sticky', left: '0',
+  display: 'flex', alignItems: 'center', gap: '3',
+  height: '52px', paddingLeft: '2', paddingRight: '4',
+  background: 'background.surface',
+})
+// "esc" keycap — white background, border, heavier bottom border.
+const kbdKey = css({
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  minWidth: '20px', paddingInline: '1', height: '18px',
+  background: 'white',
+  borderWidth: '1px', borderStyle: 'solid', borderColor: 'border.default',
+  borderBottomWidth: '2px',
+  borderRadius: 'sm',
+  fontFamily: 'body', fontSize: 'xs', lineHeight: 'none', color: 'text.secondary',
+})
+
 // View details drawer — read-only plan + dependents.
 const viewTarget = ref<EmployeeRow | null>(null)
 const isViewOpen = computed(() => !!viewTarget.value)
@@ -371,6 +430,9 @@ function confirmExport() {
 // rAF poll instead of scroll event — Pixel's internal scroll handler swallows
 // the event, making event-based detection unreliable across environments.
 const isScrolled = ref(false)
+// Visible width of the scroll viewport — the bulk-action bar is sized to this so
+// it stays pinned and never scrolls horizontally, however wide the table is.
+const viewportWidth = ref(0)
 const tableWrapperRef = ref<HTMLElement | null>(null)
 let _scrollEl: HTMLElement | null = null
 let _rafId: number | null = null
@@ -378,6 +440,7 @@ function _pollScroll() {
   const el = _scrollEl
   const scrolled = (el?.scrollLeft ?? 0) > 0
   if (scrolled !== isScrolled.value) isScrolled.value = scrolled
+  if (el && el.clientWidth !== viewportWidth.value) viewportWidth.value = el.clientWidth
   _rafId = requestAnimationFrame(_pollScroll)
 }
 onMounted(async () => {
@@ -658,8 +721,28 @@ const empId = css({ display: 'block' })
       <MpTableContainer>
         <MpTable :is-hoverable="false">
           <MpTableHead>
-            <MpTableRow>
-              <MpTableCell as="th" :class="[nameHead, isScrolled && nameBorder]">Employee name</MpTableCell>
+            <!-- Bulk-action bar — pinned to the viewport, doesn't scroll with the table -->
+            <MpTableRow v-if="someSelected">
+              <MpTableCell as="th" :colspan="renderedColCount" :class="bulkBarCell">
+                <Pixel.div :class="bulkBarInner" :style="{ width: viewportWidth ? `${viewportWidth}px` : '100%' }">
+                  <MpFlex align="center" gap="2">
+                    <MpCheckbox id="sel-all-bulk" :is-checked="allPageSelected" :is-indeterminate="isPagePartial" @change="toggleSelectAllRows" />
+                    <MpText size="body" weight="semiBold" color="text.default">{{ selectedIds.length }} selected</MpText>
+                  </MpFlex>
+                  <MpButton variant="secondary" size="md" @click="openBulkRemove">Remove from plan</MpButton>
+                  <MpText size="body-small" color="text.secondary" :class="css({ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '1' })">
+                    Press <Pixel.span :class="kbdKey">esc</Pixel.span> to deselect
+                  </MpText>
+                </Pixel.div>
+              </MpTableCell>
+            </MpTableRow>
+            <MpTableRow v-else>
+              <MpTableCell as="th" :class="[nameHead, isScrolled && nameBorder]">
+                <MpFlex align="center" gap="3">
+                  <MpCheckbox id="sel-all" :is-checked="allPageSelected" :is-indeterminate="isPagePartial" @change="toggleSelectAllRows" />
+                  Employee name
+                </MpFlex>
+              </MpTableCell>
               <MpTableCell v-if="visibleCols.has('employmentStatus')" as="th" :class="colMin">Employment status</MpTableCell>
               <MpTableCell v-if="visibleCols.has('branch')" as="th" :class="colMin">Branch</MpTableCell>
               <MpTableCell v-if="visibleCols.has('organization')" as="th" :class="colMin">Organization</MpTableCell>
@@ -681,6 +764,7 @@ const empId = css({ display: 'block' })
                 <template v-if="di === 0">
                   <MpTableCell as="td" :rowspan="deps.length" :class="[nameCellTop, isScrolled && nameBorder]">
                     <MpFlex align="center" gap="3">
+                      <MpCheckbox :id="`sel-${row.id}`" :is-checked="selectedIds.includes(row.id)" @change="(v: boolean) => toggleRowSelect(row.id, v)" />
                       <MpAvatar :id="`avatar-${row.id}`" :name="row.name" size="lg" :variant-color="avatarColor(row.id)" />
                       <MpFlex direction="column" gap="0">
                         <MpText size="body" color="text.default">{{ row.name }}</MpText>
@@ -974,6 +1058,29 @@ const empId = css({ display: 'block' })
         <MpFlex align="center" justify="flex-end" gap="2" width="100%">
           <MpButton variant="ghost" size="md" @click="cancelRemove">Cancel</MpButton>
           <MpButton variant="danger" size="md" @click="confirmRemove">Remove</MpButton>
+        </MpFlex>
+      </MpModalFooter>
+    </MpModalContent>
+    <MpModalOverlay />
+  </MpModal>
+
+  <!-- ── Bulk remove from plan — confirmation ─────────────────────────────────── -->
+  <MpModal id="modal-bulk-remove" :is-open="bulkRemoveOpen" size="sm" is-centered is-close-on-esc is-close-on-overlay-click @close="bulkRemoveOpen = false">
+    <MpModalContent>
+      <MpModalHeader>
+        Remove from plan?
+        <MpModalCloseButton />
+      </MpModalHeader>
+      <MpModalBody>
+        <MpText size="body" color="text.default">
+          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ selectedIds.length }} {{ selectedIds.length === 1 ? 'employee' : 'employees' }}</MpText>
+          will be removed from the {{ plan.name }} plan. This action can't be undone.
+        </MpText>
+      </MpModalBody>
+      <MpModalFooter>
+        <MpFlex align="center" justify="flex-end" gap="2" width="100%">
+          <MpButton variant="ghost" size="md" @click="bulkRemoveOpen = false">Cancel</MpButton>
+          <MpButton variant="danger" size="md" @click="confirmBulkRemove">Remove</MpButton>
         </MpFlex>
       </MpModalFooter>
     </MpModalContent>
