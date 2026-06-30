@@ -178,6 +178,8 @@ const depEdits = reactive<Record<string, { spouse: boolean; children: string[] }
 
 const employees = computed(() => (PLAN_EMPLOYEES[`${route.params.id}/${route.params.planId}`] ?? [])
   .filter((e) => !removedIds.value.includes(e.id))
+  // Drop anyone whose termination date has fully passed (gone after midnight).
+  .filter((e) => !(pendingTermination[e.id] && isExpired(pendingTermination[e.id])))
   // Hide anyone reassigned to a different plan in this session.
   .filter((e) => !planEdits[e.id] || planEdits[e.id] === currentPlanId.value))
 const branches = computed(() => [...new Set(employees.value.map((e) => e.branch))])
@@ -277,17 +279,40 @@ function onAction(action: string, row: EmployeeRow) {
   else if (action === 'remove') openRemove(row)
 }
 
-// Remove from plan — confirmation alert.
+// Remove from plan — confirmation alert. A termination date (when coverage ends)
+// is required and can't be back-dated.
 const removeTarget = ref<EmployeeRow | null>(null)
 const isRemoveOpen = computed(() => !!removeTarget.value)
-function openRemove(row: EmployeeRow) { removeTarget.value = row }
+const terminationDate = ref<Date | null>(null)
+// Disable any date before today — termination can't be in the past.
+function disabledBeforeToday(date: Date) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return date < today
+}
+function formatTermination(d: Date | null) {
+  return d ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d) : ''
+}
+// True once a termination date has fully passed (the day after the end date).
+// Coverage runs through the end of the termination date, so an employee stays in
+// the table until midnight of that day.
+function isExpired(d: Date) {
+  const t = new Date(); t.setHours(0, 0, 0, 0)
+  const x = new Date(d); x.setHours(0, 0, 0, 0)
+  return x.getTime() < t.getTime()
+}
+// A pending termination keeps the employee in the table (coverage still active
+// until end of that day) but flagged as terminating; empId → termination date.
+const pendingTermination = reactive<Record<string, Date>>({})
+
+function openRemove(row: EmployeeRow) { terminationDate.value = null; removeTarget.value = row }
 function cancelRemove() { removeTarget.value = null }
 function confirmRemove() {
   const row = removeTarget.value
-  if (!row) return
-  removedIds.value = [...removedIds.value, row.id]
+  if (!row || !terminationDate.value) return
+  pendingTermination[row.id] = terminationDate.value
   removeTarget.value = null
-  toast.notify({ position: 'top-center', variant: 'success', title: `${row.name} removed from ${plan.value.name}` })
+  toast.notify({ position: 'top-center', variant: 'success', title: `${row.name} will be removed from ${plan.value.name} on ${formatTermination(pendingTermination[row.id])}` })
 }
 
 // ── Bulk select + bulk remove ────────────────────────────────────────────────────
@@ -314,13 +339,17 @@ function toggleRowSelect(id: string, checked: boolean) {
 function clearSelection() { selectedIds.value = [] }
 
 const bulkRemoveOpen = ref(false)
-function openBulkRemove() { if (someSelected.value) bulkRemoveOpen.value = true }
+function openBulkRemove() { if (someSelected.value) { terminationDate.value = null; bulkRemoveOpen.value = true } }
 function confirmBulkRemove() {
-  const n = selectedIds.value.length
-  removedIds.value = [...removedIds.value, ...selectedIds.value]
+  if (!terminationDate.value) return
+  const ids = [...selectedIds.value]
+  const n = ids.length
+  const eff = formatTermination(terminationDate.value)
+  const word = n === 1 ? 'employee' : 'employees'
+  ids.forEach((id) => { pendingTermination[id] = terminationDate.value as Date })
   selectedIds.value = []
   bulkRemoveOpen.value = false
-  toast.notify({ position: 'top-center', variant: 'success', title: `${n} ${n === 1 ? 'employee' : 'employees'} removed from ${plan.value.name}` })
+  toast.notify({ position: 'top-center', variant: 'success', title: `${n} ${word} will be removed from ${plan.value.name} on ${eff}` })
 }
 // Esc clears the selection (the bulk bar advertises this).
 function onBulkKeydown(e: KeyboardEvent) {
@@ -763,12 +792,20 @@ const empId = css({ display: 'block' })
                 <!-- Merged employee columns — rendered once on the first dependent row -->
                 <template v-if="di === 0">
                   <MpTableCell as="td" :rowspan="deps.length" :class="[nameCellTop, isScrolled && nameBorder]">
-                    <MpFlex align="center" gap="3">
-                      <MpCheckbox :id="`sel-${row.id}`" :is-checked="selectedIds.includes(row.id)" @change="(v: boolean) => toggleRowSelect(row.id, v)" />
-                      <MpAvatar :id="`avatar-${row.id}`" :name="row.name" size="lg" :variant-color="avatarColor(row.id)" />
-                      <MpFlex direction="column" gap="0">
-                        <MpText size="body" color="text.default">{{ row.name }}</MpText>
-                        <MpText :class="empId" size="body-small" color="text.secondary">{{ row.employeeId }}</MpText>
+                    <MpFlex align="flex-start" gap="3">
+                      <MpFlex align="center" gap="3">
+                        <MpCheckbox :id="`sel-${row.id}`" :is-checked="selectedIds.includes(row.id)" @change="(v: boolean) => toggleRowSelect(row.id, v)" />
+                        <MpAvatar :id="`avatar-${row.id}`" :name="row.name" size="lg" :variant-color="avatarColor(row.id)" />
+                      </MpFlex>
+                      <MpFlex direction="column" gap="1">
+                        <MpFlex direction="column" gap="0">
+                          <MpText size="body" color="text.default">{{ row.name }}</MpText>
+                          <MpText :class="empId" size="body-small" color="text.secondary">{{ row.employeeId }}</MpText>
+                        </MpFlex>
+                        <MpFlex v-if="pendingTermination[row.id]" direction="column" gap="0" align="flex-start">
+                          <MpBadge for="tableStatus" type="warning" size="sm">Terminating</MpBadge>
+                          <MpText size="body-small" color="text.secondary">Coverage ends {{ formatTermination(pendingTermination[row.id]) }}</MpText>
+                        </MpFlex>
                       </MpFlex>
                     </MpFlex>
                   </MpTableCell>
@@ -1049,15 +1086,32 @@ const empId = css({ display: 'block' })
         <MpModalCloseButton />
       </MpModalHeader>
       <MpModalBody>
-        <MpText size="body" color="text.default">
-          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ removeTarget?.name }}</MpText>
-          will be removed from the {{ plan.name }} plan. This action can't be undone.
-        </MpText>
+        <MpFlex direction="column" gap="4">
+          <MpText size="body" color="text.default">
+            <MpText as="span" size="body" weight="semiBold" color="text.default">{{ removeTarget?.name }}</MpText>
+            will be removed from the {{ plan.name }} plan. This action can't be undone.
+          </MpText>
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" weight="semiBold" color="text.default">
+              Termination date <MpText as="span" size="label" color="text.danger">*</MpText>
+            </MpText>
+            <MpDatePicker
+              id="termination-date-single"
+              v-model="terminationDate"
+              format="D MMM YYYY"
+              placeholder="Select date"
+              :disabled-date="disabledBeforeToday"
+              use-portal
+              is-clearable
+            />
+            <MpText size="body-small" color="text.secondary">Coverage ends on this date.</MpText>
+          </MpFlex>
+        </MpFlex>
       </MpModalBody>
       <MpModalFooter>
         <MpFlex align="center" justify="flex-end" gap="2" width="100%">
           <MpButton variant="ghost" size="md" @click="cancelRemove">Cancel</MpButton>
-          <MpButton variant="danger" size="md" @click="confirmRemove">Remove</MpButton>
+          <MpButton variant="danger" size="md" :is-disabled="!terminationDate" @click="confirmRemove">Remove</MpButton>
         </MpFlex>
       </MpModalFooter>
     </MpModalContent>
@@ -1072,15 +1126,32 @@ const empId = css({ display: 'block' })
         <MpModalCloseButton />
       </MpModalHeader>
       <MpModalBody>
-        <MpText size="body" color="text.default">
-          <MpText as="span" size="body" weight="semiBold" color="text.default">{{ selectedIds.length }} {{ selectedIds.length === 1 ? 'employee' : 'employees' }}</MpText>
-          will be removed from the {{ plan.name }} plan. This action can't be undone.
-        </MpText>
+        <MpFlex direction="column" gap="4">
+          <MpText size="body" color="text.default">
+            <MpText as="span" size="body" weight="semiBold" color="text.default">{{ selectedIds.length }} {{ selectedIds.length === 1 ? 'employee' : 'employees' }}</MpText>
+            will be removed from the {{ plan.name }} plan. This action can't be undone.
+          </MpText>
+          <MpFlex direction="column" gap="1">
+            <MpText size="label" weight="semiBold" color="text.default">
+              Termination date <MpText as="span" size="label" color="text.danger">*</MpText>
+            </MpText>
+            <MpDatePicker
+              id="termination-date-bulk"
+              v-model="terminationDate"
+              format="D MMM YYYY"
+              placeholder="Select date"
+              :disabled-date="disabledBeforeToday"
+              use-portal
+              is-clearable
+            />
+            <MpText size="body-small" color="text.secondary">Coverage ends on this date.</MpText>
+          </MpFlex>
+        </MpFlex>
       </MpModalBody>
       <MpModalFooter>
         <MpFlex align="center" justify="flex-end" gap="2" width="100%">
           <MpButton variant="ghost" size="md" @click="bulkRemoveOpen = false">Cancel</MpButton>
-          <MpButton variant="danger" size="md" @click="confirmBulkRemove">Remove</MpButton>
+          <MpButton variant="danger" size="md" :is-disabled="!terminationDate" @click="confirmBulkRemove">Remove</MpButton>
         </MpFlex>
       </MpModalFooter>
     </MpModalContent>
