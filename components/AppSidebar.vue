@@ -42,7 +42,16 @@ watchEffect(() => {
 // Group 2 — products (divider before this group)
 const group2 = computed<NavItem[]>(() => [
   { icon: 'wallet', label: 'Accessible salary', path: '/accessible-salary' },
-  { icon: 'plans', label: 'Flex benefit', path: '/flex-benefit' },
+  {
+    icon: 'plans', label: 'Flex benefit',
+    children: [
+      { label: 'Enrollments', path: '/flex-benefit/enrollments' },
+      { label: 'Transactions', path: '/flex-benefit/transactions' },
+      { label: 'Reimbursements', path: '/flex-benefit/reimbursements' },
+      { label: 'Packages', path: '/flex-benefit/packages' },
+      { label: 'Groups', path: '/flex-benefit/groups' },
+    ],
+  },
   { icon: 'loan', label: 'Flex installment', path: '/flex-installment' },
   hasInsurancePlans.value
     ? {
