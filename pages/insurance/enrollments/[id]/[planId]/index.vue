@@ -1176,23 +1176,12 @@ const empId = css({ display: 'block' })
             </MpFlex>
           </MpFlex>
 
-          <!-- Insurance plan (change plan) -->
+          <!-- Insurance plan (read-only — plan cannot be changed here) -->
           <MpFlex direction="column" gap="1">
             <MpText size="label" weight="semiBold" color="text.default">Insurance plan</MpText>
-            <MpPopover id="edit-plan-select" is-close-on-select>
-              <MpPopoverTrigger>
-                <MpFlex width="100%">
-                  <MpSelect :model-value="editPlanId" placeholder="Select plan" size="md" is-full-width @mousedown.prevent>
-                    <option v-if="editPlanId" :value="editPlanId">{{ planNameOf(editPlanId) }}</option>
-                  </MpSelect>
-                </MpFlex>
-              </MpPopoverTrigger>
-              <MpPopoverContent :class="css({ minWidth: '280px', maxHeight: '280px', overflowY: 'auto' })">
-                <MpPopoverList>
-                  <MpPopoverListItem v-for="p in enrollmentPlans" :key="p.id" :is-active="editPlanId === p.id" @click="editPlanId = p.id">{{ p.name }}</MpPopoverListItem>
-                </MpPopoverList>
-              </MpPopoverContent>
-            </MpPopover>
+            <MpSelect :model-value="editPlanId" size="md" is-full-width is-disabled>
+              <option v-if="editPlanId" :value="editPlanId">{{ planNameOf(editPlanId) }}</option>
+            </MpSelect>
           </MpFlex>
 
           <!-- Dependents management -->
